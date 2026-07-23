@@ -1,283 +1,270 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ScrollReveal } from "@/components/ui/ScrollReveal";
+
+const navLinks = [
+  { href: "#home", label: "Home" },
+  { href: "#about", label: "About" },
+  { href: "#features", label: "Features" },
+  { href: "#how-it-works", label: "How It Works" },
+  { href: "#contact", label: "Contact" },
+];
+
+const highlights = [
+  { icon: "pin", label: "Geotagged ponds", value: "Real-time" },
+  { icon: "trend", label: "Field operations", value: "Easy to review" },
+  { icon: "shield", label: "Admin access", value: "Secure & reliable" },
+];
 
 const features = [
   {
-    eyebrow: "Approval queue",
-    metric: "Primary workflow",
-    title: "Role-based access approvals",
-    description:
-      "Approve staff requests with scoped permissions so field teams get access quickly and safely.",
-    detail:
-      "Reviewer context, access scope, and audit notes stay in one flow so teams can decide quickly without losing control.",
+    icon: "pin",
+    title: "Geotagging & Mapping",
+    description: "View every mapped pond with its precise location and boundary.",
   },
   {
-    eyebrow: "Operations",
-    metric: "Live signals",
-    title: "Live operations visibility",
-    description:
-      "Track activity, assignments, and key signals from one dashboard without jumping between tools.",
-    detail: "Monitor queue volume, escalation risks, and operational health from a single admin workspace.",
+    icon: "water",
+    title: "Pond Monitoring",
+    description: "Check pond status, stock details, and assigned field staff.",
   },
   {
-    eyebrow: "Configuration",
-    metric: "Policy center",
-    title: "Policy and settings control",
-    description:
-      "Adjust operational rules and configuration in one place with consistent admin guardrails.",
-    detail: "Update admin settings with fewer handoffs and clearer governance over what changes are allowed.",
+    icon: "record",
+    title: "Field Records",
+    description: "Review stocking, mortality, and harvest entries from the mobile app.",
   },
   {
-    eyebrow: "Compliance",
-    metric: "Audit trail",
-    title: "Audit-ready change history",
-    description:
-      "Keep a clear record of who changed what and when for faster reviews and issue resolution.",
-    detail: "Action history stays visible for approvals, policy changes, and exceptions that need follow-up.",
+    icon: "users",
+    title: "User Directory",
+    description: "See the administrators and field staff working across the farm.",
+  },
+  {
+    icon: "settings",
+    title: "Essential Settings",
+    description: "Manage the core preferences needed for daily operations.",
   },
 ];
 
-const proofPoints = [
+const steps = [
   {
-    value: "24",
-    label: "queued approvals",
-    detail: "Field access requests routed into one review queue.",
+    number: "01",
+    title: "Map the ponds",
+    description: "Field staff capture each pond location and boundary from the mobile app.",
   },
   {
-    value: "95%",
-    label: "same-day turnaround",
-    detail: "Supervisors can see what is blocked before work slows down.",
+    number: "02",
+    title: "Record field activity",
+    description: "Stocking, mortality, and harvest updates are saved where the work happens.",
   },
   {
-    value: "100%",
-    label: "action traceability",
-    detail: "Every admin change is captured for audits and follow-up.",
-  },
-];
-
-const previewStats = [
-  {
-    label: "Pending reviews",
-    value: "24",
-  },
-  {
-    label: "Active policies",
-    value: "12",
-  },
-  {
-    label: "Escalations",
-    value: "03",
+    number: "03",
+    title: "Review operations",
+    description: "Administrators see pond, staff, and record information in one clean console.",
   },
 ];
 
-const previewQueue = [
-  {
-    team: "North District",
-    role: "Meter Reader",
-    state: "Awaiting supervisor review",
-  },
-  {
-    team: "Central Ops",
-    role: "Maintenance Lead",
-    state: "Ready for admin approval",
-  },
-  {
-    team: "South Zone",
-    role: "Field Auditor",
-    state: "Policy check flagged",
-  },
-];
+type IconName = "pin" | "trend" | "shield" | "water" | "record" | "users" | "settings";
+
+function LandingIcon({ name }: { name: IconName }) {
+  if (name === "pin") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" />
+        <circle cx="12" cy="10" r="2.5" />
+      </svg>
+    );
+  }
+
+  if (name === "trend") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 19V5M4 19h16M7 15l4-4 3 2 5-6" />
+        <path d="M15 7h4v4" />
+      </svg>
+    );
+  }
+
+  if (name === "shield") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 3 5 6v5c0 4.6 2.8 8.1 7 10 4.2-1.9 7-5.4 7-10V6l-7-3Z" />
+        <path d="m9 12 2 2 4-4" />
+      </svg>
+    );
+  }
+
+  if (name === "water") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 3c3.2 4 5 6.5 5 9a5 5 0 0 1-10 0c0-2.5 1.8-5 5-9Z" />
+        <path d="M9.5 13.5c.6 1.2 1.4 1.8 2.5 1.8" />
+      </svg>
+    );
+  }
+
+  if (name === "record") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M6 3h9l4 4v14H6V3Z" />
+        <path d="M15 3v5h4M9 12h6M9 16h6" />
+      </svg>
+    );
+  }
+
+  if (name === "users") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="9" cy="8" r="3" />
+        <path d="M3.5 19v-1.5A4.5 4.5 0 0 1 8 13h2a4.5 4.5 0 0 1 4.5 4.5V19" />
+        <path d="M15 6.5a3 3 0 0 1 0 5.5M17 14a4 4 0 0 1 3.5 4v1" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1" />
+    </svg>
+  );
+}
 
 export default function HomePage() {
   return (
-    <main className="landing-root">
-      <header className="landing-topbar">
-        <Link className="landing-brand" href="/">
-          <Image
-            className="landing-brand-logo"
-            src="/media/branding/logo.png"
-            alt="AquaPin logo"
-            width={44}
-            height={44}
-            priority
-          />
-          <span className="landing-brand-copy">
-            <strong>AquaPin</strong>
-            <small>Operations Console</small>
-          </span>
-        </Link>
-        <div className="landing-topbar-actions">
-          <Link className="landing-topbar-link" href="#features">
-            Features
+    <main className="aquapin-landing">
+      <header className="aquapin-header">
+        <div className="aquapin-header-inner">
+          <Link className="aquapin-brand" href="#home" aria-label="AquaPin home">
+            <Image
+              src="/media/branding/logo.png"
+              alt=""
+              width={56}
+              height={56}
+              priority
+            />
+            <span className="aquapin-brand-copy">
+              <strong>AquaPin</strong>
+              <small>Map. Monitor. Manage.</small>
+            </span>
           </Link>
-          <Link className="landing-login-button" href="/login">
+
+          <nav className="aquapin-nav" aria-label="Main navigation">
+            {navLinks.map((item) => (
+              <Link href={item.href} key={item.href}>
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+
+          <Link className="aquapin-login" href="/login">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="8" r="3.5" />
+              <path d="M5 21v-2a7 7 0 0 1 14 0v2" />
+            </svg>
             Login
           </Link>
         </div>
       </header>
 
-      <section className="landing-hero">
-        <div className="landing-content">
-          <p className="landing-kicker">Water Utility Admin Platform</p>
-          <h1>Run approvals, monitoring, and policy updates from one command center.</h1>
-          <p className="landing-copy">
-            AquaPin centralizes admin workflows so teams can move faster while keeping access,
-            operations, and configuration under control.
-          </p>
-          <ul className="landing-highlights">
-            <li>Fast staff onboarding and access approval</li>
-            <li>One dashboard for operational decisions</li>
-            <li>Clear, traceable admin actions</li>
-          </ul>
-          <div className="landing-actions">
-            <Link className="primary-button" href="/login">
-              Open Sign In
-            </Link>
-            <Link className="secondary-button" href="#features">
-              Explore Features
-            </Link>
-          </div>
-          <ScrollReveal delay={40}>
-            <div className="landing-proof-row">
-              {proofPoints.map((point) => (
-                <article className="landing-proof-card" key={point.label}>
-                  <p className="landing-proof-value">{point.value}</p>
-                  <p className="landing-proof-label">{point.label}</p>
-                  <p className="landing-proof-detail">{point.detail}</p>
-                </article>
-              ))}
-            </div>
-          </ScrollReveal>
-          <ScrollReveal delay={90}>
-            <section className="landing-preview" aria-label="AquaPin dashboard preview">
-              <div className="landing-preview-head">
-                <div>
-                  <p className="landing-preview-kicker">Live Preview</p>
-                  <h2>Approval queue and policy visibility in one view.</h2>
-                </div>
-                <span className="landing-preview-status">Sync healthy</span>
-              </div>
-              <div className="landing-preview-grid">
-                <div className="landing-preview-stats">
-                  {previewStats.map((stat) => (
-                    <article className="landing-preview-stat" key={stat.label}>
-                      <p>{stat.label}</p>
-                      <strong>{stat.value}</strong>
-                    </article>
-                  ))}
-                </div>
-                <div className="landing-preview-queue">
-                  <div className="landing-preview-queue-head">
-                    <p>Pending access queue</p>
-                    <span>4 high priority</span>
-                  </div>
-                  <div className="landing-preview-rows">
-                    {previewQueue.map((item) => (
-                      <article className="landing-preview-row" key={`${item.team}-${item.role}`}>
-                        <div>
-                          <strong>{item.team}</strong>
-                          <p>{item.role}</p>
-                        </div>
-                        <span>{item.state}</span>
-                      </article>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </section>
-          </ScrollReveal>
-        </div>
-      </section>
+      <section className="aquapin-hero" id="home" aria-labelledby="aquapin-hero-title">
+        <Image
+          className="aquapin-hero-image"
+          src="/media/landing/aquaculture-hero-v2.png"
+          alt="Aquaculture ponds surrounded by tropical mountains"
+          fill
+          sizes="100vw"
+          priority
+        />
+        <div className="aquapin-hero-shade" />
 
-      <section className="landing-features" id="features">
-        <ScrollReveal>
-          <div className="landing-section-head">
-            <p className="landing-kicker">Core Features</p>
-            <h2>Built for high-confidence operations teams.</h2>
+        <div className="aquapin-hero-inner">
+          <div className="aquapin-hero-copy">
+            <h1 id="aquapin-hero-title">
+              Smart Mapping.
+              <span>Smarter Aquaculture.</span>
+            </h1>
+            <p>
+              AquaPin is a geotagging and geospatial mapping system that helps aquaculture
+              administrators monitor ponds, review field activity, and make informed operational
+              decisions.
+            </p>
           </div>
-        </ScrollReveal>
-        <ScrollReveal delay={70}>
-          <div className="landing-feature-grid">
-            {features.map((feature, index) => (
-              <article
-                className={`landing-feature-card${index === 0 ? " landing-feature-card-primary" : ""}`}
-                key={feature.title}
-              >
-                <div className="landing-feature-meta">
-                  <p className="landing-feature-eyebrow">{feature.eyebrow}</p>
-                  <span className="landing-feature-badge">{feature.metric}</span>
-                </div>
-                <h3>{feature.title}</h3>
-                <p>{feature.description}</p>
-                <p className="landing-feature-detail">{feature.detail}</p>
+
+          <div className="aquapin-highlights" aria-label="AquaPin highlights">
+            {highlights.map((item) => (
+              <article key={item.label}>
+                <span className="aquapin-icon">
+                  <LandingIcon name={item.icon as IconName} />
+                </span>
+                <span>
+                  <small>{item.label}</small>
+                  <strong>{item.value}</strong>
+                </span>
               </article>
             ))}
           </div>
-        </ScrollReveal>
+        </div>
       </section>
 
-      <footer className="landing-footer" id="about">
-        <ScrollReveal>
-          <div className="landing-footer-content">
-            <div className="landing-footer-grid">
-              <div className="landing-footer-column">
-                <p className="landing-footer-heading">About</p>
-                <div className="landing-footer-links">
-                  <Link className="landing-footer-link" href="#features">
-                    Core Features
-                  </Link>
-                  <Link className="landing-footer-link" href="#about">
-                    Footer Information
-                  </Link>
-                  <Link className="landing-footer-link" href="/login">
-                    Sign In
-                  </Link>
-                </div>
-              </div>
+      <section className="aquapin-features" id="features" aria-labelledby="features-title">
+        <div className="aquapin-section-heading">
+          <p>Features</p>
+          <h2 id="features-title">Everything needed for daily aquaculture operations</h2>
+          <span>
+            A focused set of tools that mirrors the work captured by the AquaPin mobile app.
+          </span>
+        </div>
 
-              <div className="landing-footer-column">
-                <p className="landing-footer-heading">Navigation</p>
-                <div className="landing-footer-links">
-                  <Link className="landing-footer-link" href="/">
-                    Home
-                  </Link>
-                  <Link className="landing-footer-link" href="#features">
-                    Product Overview
-                  </Link>
-                  <Link className="landing-footer-link" href="/admin">
-                    Dashboard Access
-                  </Link>
-                </div>
-              </div>
+        <div className="aquapin-feature-grid">
+          {features.map((feature) => (
+            <article className="aquapin-feature-card" key={feature.title}>
+              <span className="aquapin-icon aquapin-icon-large">
+                <LandingIcon name={feature.icon as IconName} />
+              </span>
+              <h3>{feature.title}</h3>
+              <p>{feature.description}</p>
+            </article>
+          ))}
+        </div>
+      </section>
 
-              <div className="landing-footer-column">
-                <p className="landing-footer-heading">Contact</p>
-                <div className="landing-footer-links">
-                  <a className="landing-footer-link" href="mailto:hello@aquapin.com">
-                    hello@aquapin.com
-                  </a>
-                  <a className="landing-footer-link" href="mailto:support@aquapin.com">
-                    support@aquapin.com
-                  </a>
-                  <a className="landing-footer-link" href="mailto:report@aquapin.com">
-                    report@aquapin.com
-                  </a>
-                </div>
-                <p className="landing-footer-help">
-                  Report issues or operational concerns through <strong>report@aquapin.com</strong>.
-                </p>
-              </div>
-            </div>
-            <div className="landing-footer-meta">
-              <p>Terms of Use</p>
-              <span>&bull;</span>
-              <p>Privacy Policy</p>
-              <span>&bull;</span>
-              <p>Send Feedback</p>
-            </div>
-          </div>
-        </ScrollReveal>
+      <section className="aquapin-about" id="about" aria-labelledby="about-title">
+        <div>
+          <p className="aquapin-eyebrow">About AquaPin</p>
+          <h2 id="about-title">Built around the information that farm teams actually need</h2>
+        </div>
+        <p>
+          AquaPin connects mobile field records with a simple web console. It keeps pond
+          locations, staff information, and operational records organized without filling the
+          dashboard with unrelated tools.
+        </p>
+      </section>
+
+      <section className="aquapin-process" id="how-it-works" aria-labelledby="process-title">
+        <div className="aquapin-section-heading">
+          <p>How it works</p>
+          <h2 id="process-title">From the pond to the admin console</h2>
+        </div>
+        <div className="aquapin-step-grid">
+          {steps.map((step) => (
+            <article key={step.number}>
+              <span>{step.number}</span>
+              <h3>{step.title}</h3>
+              <p>{step.description}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <footer className="aquapin-footer" id="contact">
+        <div>
+          <strong>AquaPin</strong>
+          <p>A geotagging and geospatial mapping system for aquaculture management.</p>
+        </div>
+        <nav aria-label="Footer navigation">
+          <Link href="#about">About</Link>
+          <Link href="#features">Features</Link>
+          <Link href="#how-it-works">How It Works</Link>
+          <Link href="/login">Login</Link>
+        </nav>
       </footer>
     </main>
   );

@@ -24,9 +24,12 @@ export default function AdminShell({ children, userEmail, shellData }: AdminShel
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const navItems = [
     { href: "/admin", label: "Dashboard", badge: shellData.navBadges.dashboard },
-    { href: "/admin/approvals", label: "Approvals", badge: shellData.navBadges.approvals },
+    { href: "/admin/ponds", label: "Ponds" },
+    { href: "/admin/users", label: "Users" },
+    { href: "/admin/records", label: "Records" },
     { href: "/admin/settings", label: "Settings", badge: shellData.navBadges.settings },
   ];
+
 
   useEffect(() => {
     setSidebarOpen(false);
@@ -84,7 +87,7 @@ export default function AdminShell({ children, userEmail, shellData }: AdminShel
           <p className="admin-session-email">{userEmail}</p>
           <div className="admin-session-pills">
             <span className="ui-pill ui-pill-ghost">{getEnvironmentLabel()}</span>
-            <span className="ui-pill ui-pill-info">{shellData.pendingApprovals} pending</span>
+            <span className="ui-pill ui-pill-info">Admin access</span>
           </div>
           <form action={signOutAction}>
             <button type="submit" className="danger-button">
@@ -94,11 +97,10 @@ export default function AdminShell({ children, userEmail, shellData }: AdminShel
         </div>
       </aside>
 
-      <main className="admin-main">
+      <main className={`admin-main ${pathname.startsWith("/admin/ponds") ? "admin-main-workspace" : ""}`}>
         <AdminTopBar
           organizationName={shellData.organizationName}
           envLabel={getEnvironmentLabel()}
-          pendingApprovals={shellData.pendingApprovals}
           attentionCount={shellData.attentionCount}
           settingsChanges={shellData.navBadges.settings}
           isSidebarOpen={sidebarOpen}

@@ -50,14 +50,22 @@ export async function updateAdminSettingAction(formData: FormData) {
     return redirect(appendQueryParam(safeReturnTo, "error", `Invalid settings for ${section}.`));
   }
 
-  const supabase = (await createSupabaseServerClient()) as any;
-  const { error } = await supabase.rpc("admin_upsert_setting", {
-    p_section: section,
-    p_value: parsedValue,
-  });
+  const { cookies } = await import("next/headers");
+  const cookieStore = await cookies();
+  const isMock = cookieStore.get("aquapin_mock_admin")?.value === "true";
 
-  if (error) {
-    redirect(appendQueryParam(safeReturnTo, "error", error.message));
+  if (isMock) {
+    // Successfully simulate save in mock mode
+  } else {
+    const supabase = (await createSupabaseServerClient()) as any;
+    const { error } = await supabase.rpc("admin_upsert_setting", {
+      p_section: section,
+      p_value: parsedValue,
+    });
+
+    if (error) {
+      redirect(appendQueryParam(safeReturnTo, "error", error.message));
+    }
   }
 
   revalidatePath("/admin");

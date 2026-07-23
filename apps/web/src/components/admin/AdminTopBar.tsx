@@ -7,7 +7,6 @@ import { useTransition } from "react";
 type AdminTopBarProps = {
   organizationName: string;
   envLabel: string;
-  pendingApprovals: number;
   attentionCount: number;
   settingsChanges: number;
   isSidebarOpen: boolean;
@@ -22,16 +21,34 @@ type PageMeta = {
 
 function getPageMeta(
   pathname: string,
-  pendingApprovals: number,
   settingsChanges: number
 ): PageMeta {
-  if (pathname.startsWith("/admin/approvals")) {
+  if (pathname.startsWith("/admin/users")) {
     return {
-      title: "Access Queue",
-      description: "Review staff signups, clear queue pressure, and audit admin approvals.",
+      title: "Users",
+      description: "View the staff accounts using AquaPin in the field.",
       shortcuts: [
         { href: "/admin", label: "Dashboard" },
-        { href: "/admin/settings", label: "Settings", badge: settingsChanges },
+        { href: "/admin/records", label: "Records" },
+      ],
+    };
+  }
+
+  if (pathname.startsWith("/admin/ponds")) {
+    return {
+      title: "Ponds",
+      description: "Inspect pond locations, boundaries, stock, and current status.",
+      shortcuts: [],
+    };
+  }
+
+  if (pathname.startsWith("/admin/records")) {
+    return {
+      title: "Records",
+      description: "Review stocking, mortality, and harvest entries sent from the mobile app.",
+      shortcuts: [
+        { href: "/admin/ponds", label: "Ponds" },
+        { href: "/admin/users", label: "Users" },
       ],
     };
   }
@@ -42,16 +59,16 @@ function getPageMeta(
       description: "Manage typed configuration, review diffs, and restore recent changes.",
       shortcuts: [
         { href: "/admin", label: "Dashboard" },
-        { href: "/admin/approvals?status=pending", label: "Review Queue", badge: pendingApprovals },
+        { href: "/admin/users", label: "Users" },
       ],
     };
   }
 
   return {
     title: "Operations Dashboard",
-    description: "Track farm health, approval backlog, and recent operational activity.",
+    description: "Track pond health, field staff, and recent mobile activity.",
     shortcuts: [
-      { href: "/admin/approvals?status=pending", label: "Review Queue", badge: pendingApprovals },
+      { href: "/admin/users", label: "Users" },
       { href: "/admin/settings", label: "Settings", badge: settingsChanges },
     ],
   };
@@ -60,7 +77,6 @@ function getPageMeta(
 export default function AdminTopBar({
   organizationName,
   envLabel,
-  pendingApprovals,
   attentionCount,
   settingsChanges,
   isSidebarOpen,
@@ -69,7 +85,7 @@ export default function AdminTopBar({
   const pathname = usePathname();
   const router = useRouter();
   const [refreshing, startRefresh] = useTransition();
-  const pageMeta = getPageMeta(pathname, pendingApprovals, settingsChanges);
+  const pageMeta = getPageMeta(pathname, settingsChanges);
 
   return (
     <header className="admin-topbar">

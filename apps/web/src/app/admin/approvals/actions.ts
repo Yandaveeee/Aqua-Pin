@@ -27,18 +27,26 @@ export async function approvePendingStaffAction(formData: FormData) {
     redirect(appendQueryParam(safeReturnTo, "error", "Missing target user id."));
   }
 
-  const supabase = (await createSupabaseServerClient()) as any;
-  const { error } = await supabase.rpc("admin_approve_staff", {
-    target_user_id: targetUserId,
-    notes,
-  });
+  const { cookies } = await import("next/headers");
+  const cookieStore = await cookies();
+  const isMock = cookieStore.get("aquapin_mock_admin")?.value === "true";
 
-  if (error) {
-    if (isMissingSchemaFunctionError(error, "admin_approve_staff")) {
-      redirect(appendQueryParam(safeReturnTo, "error", getStep5AccessMigrationMessage()));
+  if (isMock) {
+    // Simulate approval in mock mode
+  } else {
+    const supabase = (await createSupabaseServerClient()) as any;
+    const { error } = await supabase.rpc("admin_approve_staff", {
+      target_user_id: targetUserId,
+      notes,
+    });
+
+    if (error) {
+      if (isMissingSchemaFunctionError(error, "admin_approve_staff")) {
+        redirect(appendQueryParam(safeReturnTo, "error", getStep5AccessMigrationMessage()));
+      }
+
+      redirect(appendQueryParam(safeReturnTo, "error", error.message));
     }
-
-    redirect(appendQueryParam(safeReturnTo, "error", error.message));
   }
 
   revalidatePath("/admin");
@@ -66,20 +74,28 @@ export async function bulkApprovePendingStaffAction(formData: FormData) {
     redirect(appendQueryParam(safeReturnTo, "error", "Select at least one account to approve."));
   }
 
-  const supabase = (await createSupabaseServerClient()) as any;
+  const { cookies } = await import("next/headers");
+  const cookieStore = await cookies();
+  const isMock = cookieStore.get("aquapin_mock_admin")?.value === "true";
 
-  for (const targetUserId of targetUserIds) {
-    const { error } = await supabase.rpc("admin_approve_staff", {
-      target_user_id: targetUserId,
-      notes,
-    });
+  if (isMock) {
+    // Simulate bulk approval in mock mode
+  } else {
+    const supabase = (await createSupabaseServerClient()) as any;
 
-    if (error) {
-      if (isMissingSchemaFunctionError(error, "admin_approve_staff")) {
-        redirect(appendQueryParam(safeReturnTo, "error", getStep5AccessMigrationMessage()));
+    for (const targetUserId of targetUserIds) {
+      const { error } = await supabase.rpc("admin_approve_staff", {
+        target_user_id: targetUserId,
+        notes,
+      });
+
+      if (error) {
+        if (isMissingSchemaFunctionError(error, "admin_approve_staff")) {
+          redirect(appendQueryParam(safeReturnTo, "error", getStep5AccessMigrationMessage()));
+        }
+
+        redirect(appendQueryParam(safeReturnTo, "error", error.message));
       }
-
-      redirect(appendQueryParam(safeReturnTo, "error", error.message));
     }
   }
 

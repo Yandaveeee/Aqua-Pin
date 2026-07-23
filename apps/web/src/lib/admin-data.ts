@@ -10,10 +10,6 @@ type SettingsRow = Pick<
   Database["public"]["Tables"]["admin_settings"]["Row"],
   "section" | "value"
 >;
-type PendingProfileRow = Pick<
-  Database["public"]["Tables"]["public_profiles"]["Row"],
-  "id" | "email" | "created_at" | "status"
->;
 type PondSummaryRow = Pick<
   Database["public"]["Tables"]["ponds"]["Row"],
   "id" | "name" | "is_active" | "current_stock_count"
@@ -28,11 +24,9 @@ const EVENT_TABLES: EventTable[] = ["stocking_logs", "mortality_logs", "harvests
 
 export type ShellData = {
   organizationName: string;
-  pendingApprovals: number;
   attentionCount: number;
   navBadges: {
     dashboard: number;
-    approvals: number;
     settings: number;
   };
 };
@@ -72,7 +66,7 @@ export type DashboardOverview = {
   attentionItems: DashboardAttentionItem[];
   recentEvents: DashboardTimelineItem[];
   counts: {
-    pendingApprovals: number;
+    totalStaff: number;
     lowStockCount: number;
     stalePondsCount: number;
     activePonds: number;
@@ -279,12 +273,24 @@ async function getStalePonds(supabase: SupabaseClient, staleSyncMinutes: number)
 }
 
 export async function getAdminShellData(): Promise<ShellData> {
+  const { cookies } = await import("next/headers");
+  const cookieStore = await cookies();
+  const isMock = cookieStore.get("aquapin_mock_admin")?.value === "true";
+
+  if (isMock) {
+    return {
+      organizationName: "AquaPin Laguna Farm (Mock)",
+      attentionCount: 1,
+      navBadges: {
+        dashboard: 1,
+        settings: 2,
+      },
+    };
+  }
+
   const supabase = await createSupabaseServerClient();
-  const [settingsSnapshot, pendingApprovals, settingsChanges24h] = await Promise.all([
+  const [settingsSnapshot, settingsChanges24h] = await Promise.all([
     getSettingsSnapshot(supabase),
-    countRows(supabase, "public_profiles", (query) =>
-      query.eq("role", "field_staff").eq("status", "pending")
-    ),
     countRows(supabase, "admin_settings_audit", (query) =>
       query.gte("changed_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
     ),
@@ -300,35 +306,167 @@ export async function getAdminShellData(): Promise<ShellData> {
     getStalePonds(supabase, staleSyncMinutes),
   ]);
 
-  const attentionCount = [pendingApprovals, lowStockCount, stalePonds.length].filter(
+  const attentionCount = [lowStockCount, stalePonds.length].filter(
     (count) => count > 0
   ).length;
 
   return {
     organizationName: settingsSnapshot.general.organizationName,
-    pendingApprovals,
     attentionCount,
     navBadges: {
       dashboard: attentionCount,
-      approvals: pendingApprovals,
       settings: settingsChanges24h,
     },
   };
 }
 
 export async function getDashboardOverview(days: number): Promise<DashboardOverview> {
+  const { cookies } = await import("next/headers");
+  const cookieStore = await cookies();
+  const isMock = cookieStore.get("aquapin_mock_admin")?.value === "true";
+
+  if (isMock) {
+    const { MOCK_PONDS, MOCK_STOCKING_LOGS, MOCK_MORTALITY_LOGS, MOCK_HARVESTS } = await import("./mock-data");
+
+    const timelineItems: DashboardTimelineItem[] = [];
+    MOCK_STOCKING_LOGS.forEach((log) => {
+      timelineItems.push({
+        id: log.id,
+        createdAt: log.createdAt,
+        pondName: log.pondName,
+        actorName: log.stockedBy.split("@")[0].replace("staff-", ""),
+        badge: "Stocking",
+        tone: "success",
+        summary: `${log.quantity.toLocaleString()} Tilapia stocked into ${log.pondName}.`,
+        detail: `Source: ${log.source}, Avg Weight: ${log.averageWeightG}g`,
+        rawData: log as any,
+      });
+    });
+
+    MOCK_MORTALITY_LOGS.forEach((log) => {
+      timelineItems.push({
+        id: log.id,
+        createdAt: log.createdAt,
+        pondName: log.pondName,
+        actorName: log.loggedBy.split("@")[0].replace("staff-", ""),
+        badge: "Mortality",
+        tone: "danger",
+        summary: `${log.quantity.toLocaleString()} mortalities logged for ${log.pondName}.`,
+        detail: `Reason: ${log.notes}`,
+        rawData: log as any,
+      });
+    });
+
+    MOCK_HARVESTS.forEach((log) => {
+      timelineItems.push({
+        id: log.id,
+        createdAt: log.createdAt,
+        pondName: log.pondName,
+        actorName: log.harvestedBy.split("@")[0].replace("staff-", ""),
+        badge: "Harvest",
+        tone: "info",
+        summary: `${log.yieldKg.toLocaleString()} kg harvested from ${log.pondName}.`,
+        detail: `Species: ${log.species}, Fish Count: ${log.fishCount.toLocaleString()}`,
+        rawData: log as any,
+      });
+    });
+
+    // Filter timeline by days
+    const feedSinceTime = Date.now() - days * 24 * 60 * 60 * 1000;
+    const filteredTimeline = timelineItems
+      .filter((item) => new Date(item.createdAt).getTime() >= feedSinceTime)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    const attentionItems: DashboardAttentionItem[] = [
+      {
+        id: "low-stock",
+        title: "1 low-stock pond below threshold",
+        description: "Rizal Hillside Pond D (350). Threshold: 1500.",
+        tone: "danger",
+        href: "/admin/ponds",
+        actionLabel: "Inspect pond health",
+      },
+    ];
+
+    const metrics: DashboardMetric[] = [
+      {
+        label: "Field Staff",
+        value: "3",
+        detail: "Mobile users with field access",
+        trend: "View staff accounts and roles",
+        tone: "neutral",
+        href: "/admin/users",
+      },
+      {
+        label: "Low-Stock Ponds",
+        value: "1",
+        detail: "Threshold below 1500 fish",
+        trend: "1 pond needs restock review",
+        tone: "danger",
+        href: "/admin/ponds",
+      },
+      {
+        label: "Stale Activity",
+        value: "0",
+        detail: "No pond history in 45 minutes",
+        trend: "All active ponds reporting within target window",
+        tone: "success",
+        href: "/admin/ponds",
+      },
+      {
+        label: "Activity (24h)",
+        value: "3",
+        detail: "Stocking, mortality, harvest, and history records",
+        trend: "+1 vs previous 24h",
+        tone: "success",
+        href: "/admin/records?days=1",
+      },
+      {
+        label: "Active Ponds",
+        value: `${MOCK_PONDS.filter((p) => p.isActive).length}/${MOCK_PONDS.length}`,
+        detail: "3 field staff records supporting operations",
+        trend: "All ponds marked active",
+        tone: "neutral",
+        href: "/admin/ponds",
+      },
+      {
+        label: "Settings Changes",
+        value: "2",
+        detail: "Configuration changes captured in the audit trail",
+        trend: "Recent configuration activity detected",
+        tone: "info",
+        href: "/admin/settings",
+      },
+    ];
+
+    return {
+      metrics,
+      attentionItems,
+      recentEvents: filteredTimeline,
+      counts: {
+        totalStaff: 3,
+        lowStockCount: 1,
+        stalePondsCount: 0,
+        activePonds: MOCK_PONDS.filter((p) => p.isActive).length,
+        totalPonds: MOCK_PONDS.length,
+      },
+      thresholds: {
+        lowStockThreshold: 1500,
+        staleSyncMinutes: 45,
+      },
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
   const supabase = await createSupabaseServerClient();
   const now = Date.now();
   const since24h = new Date(now - 24 * 60 * 60 * 1000).toISOString();
   const previous24h = new Date(now - 48 * 60 * 60 * 1000).toISOString();
-  const since7d = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
   const feedSince = new Date(now - days * 24 * 60 * 60 * 1000).toISOString();
 
   const [
     settingsSnapshot,
     totalStaff,
-    pendingApprovals,
-    pendingCreatedLast7d,
     totalPonds,
     activePonds,
     events24h,
@@ -337,12 +475,6 @@ export async function getDashboardOverview(days: number): Promise<DashboardOverv
   ] = await Promise.all([
     getSettingsSnapshot(supabase),
     countRows(supabase, "public_profiles", (query) => query.eq("role", "field_staff")),
-    countRows(supabase, "public_profiles", (query) =>
-      query.eq("role", "field_staff").eq("status", "pending")
-    ),
-    countRows(supabase, "public_profiles", (query) =>
-      query.eq("role", "field_staff").eq("status", "pending").gte("created_at", since7d)
-    ),
     countRows(supabase, "ponds"),
     countRows(supabase, "ponds", (query) => query.eq("is_active", true)),
     countEventsBetween(supabase, since24h),
@@ -357,7 +489,6 @@ export async function getDashboardOverview(days: number): Promise<DashboardOverv
     lowStockCount,
     lowStockPondsResult,
     stalePonds,
-    pendingProfilesResult,
     recentEventsResult,
   ] = await Promise.all([
     countRows(supabase, "ponds", (query) =>
@@ -372,13 +503,6 @@ export async function getDashboardOverview(days: number): Promise<DashboardOverv
       .limit(4),
     getStalePonds(supabase, staleSyncMinutes),
     supabase
-      .from("public_profiles")
-      .select("id, email, created_at, status")
-      .eq("role", "field_staff")
-      .eq("status", "pending")
-      .order("created_at", { ascending: true })
-      .limit(3),
-    supabase
       .from("pond_history")
       .select("id, pond_id, event_type, event_data, recorded_by, created_at")
       .gte("created_at", feedSince)
@@ -387,15 +511,10 @@ export async function getDashboardOverview(days: number): Promise<DashboardOverv
   ]);
 
   const lowStockPonds = (lowStockPondsResult.data ?? []) as PondSummaryRow[];
-  const pendingProfiles = (pendingProfilesResult.data ?? []) as PendingProfileRow[];
   const recentEvents = (recentEventsResult.data ?? []) as PondHistoryRow[];
 
   if (lowStockPondsResult.error) {
     console.error("Failed to load low-stock ponds:", lowStockPondsResult.error.message);
-  }
-
-  if (pendingProfilesResult.error) {
-    console.error("Failed to load pending profiles preview:", pendingProfilesResult.error.message);
   }
 
   if (recentEventsResult.error) {
@@ -442,22 +561,6 @@ export async function getDashboardOverview(days: number): Promise<DashboardOverv
 
   const attentionItems: DashboardAttentionItem[] = [];
 
-  if (pendingApprovals > 0) {
-    const pendingPreview =
-      pendingProfiles.length > 0
-        ? pendingProfiles.map((profile) => profile.email).join(", ")
-        : "Review the waiting queue for new field staff accounts.";
-
-    attentionItems.push({
-      id: "pending-approvals",
-      title: `${pluralize(pendingApprovals, "pending approval")}`,
-      description: pendingPreview,
-      tone: pendingApprovals > 5 ? "danger" : "warning",
-      href: "/admin/approvals?status=pending",
-      actionLabel: "Review queue",
-    });
-  }
-
   if (lowStockCount > 0) {
     const pondPreview =
       lowStockPonds.length > 0
@@ -471,7 +574,7 @@ export async function getDashboardOverview(days: number): Promise<DashboardOverv
       title: `${pluralize(lowStockCount, "low-stock pond")} below threshold`,
       description: `${pondPreview}. Threshold: ${lowStockThreshold}.`,
       tone: lowStockCount > 3 ? "danger" : "warning",
-      href: "#pond-health",
+      href: "/admin/ponds",
       actionLabel: "Inspect pond health",
     });
   }
@@ -482,10 +585,10 @@ export async function getDashboardOverview(days: number): Promise<DashboardOverv
       title: `${pluralize(stalePonds.length, "active pond")} with stale activity`,
       description: `${stalePonds
         .slice(0, 4)
-        .map((pond) => pond.name)
+        .map((pond: any) => pond.name)
         .join(", ")}${stalePonds.length > 4 ? "..." : ""}. No pond history in ${staleSyncMinutes} minutes.`,
       tone: stalePonds.length > 2 ? "danger" : "warning",
-      href: "#stale-activity",
+      href: "/admin/ponds",
       actionLabel: "Review stale ponds",
     });
   }
@@ -494,24 +597,21 @@ export async function getDashboardOverview(days: number): Promise<DashboardOverv
     attentionItems.push({
       id: "all-clear",
       title: "No urgent operational blockers",
-      description: "Queue pressure, pond thresholds, and recent activity are all within target.",
+      description: "Pond thresholds and recent mobile activity are within target.",
       tone: "info",
-      href: "#feed",
-      actionLabel: "Review feed",
+      href: "/admin/records",
+      actionLabel: "Review records",
     });
   }
 
   const metrics: DashboardMetric[] = [
     {
-      label: "Pending Approvals",
-      value: pendingApprovals.toString(),
-      detail: "Field staff waiting for admin review",
-      trend:
-        pendingCreatedLast7d > 0
-          ? `${pluralize(pendingCreatedLast7d, "new account")} in 7d`
-          : "No new pending accounts this week",
-      tone: pendingApprovals > 0 ? "warning" : "success",
-      href: "/admin/approvals?status=pending",
+      label: "Field Staff",
+      value: totalStaff.toString(),
+      detail: "Mobile users with field access",
+      trend: "View staff accounts and roles",
+      tone: "neutral",
+      href: "/admin/users",
     },
     {
       label: "Low-Stock Ponds",
@@ -522,7 +622,7 @@ export async function getDashboardOverview(days: number): Promise<DashboardOverv
           ? `${pluralize(lowStockCount, "pond")} need restock review`
           : "All active ponds above target",
       tone: lowStockCount > 0 ? "danger" : "success",
-      href: "#pond-health",
+      href: "/admin/ponds",
     },
     {
       label: "Stale Activity",
@@ -533,7 +633,7 @@ export async function getDashboardOverview(days: number): Promise<DashboardOverv
           ? `${pluralize(activePonds - stalePonds.length, "active pond")} reporting recently`
           : "All active ponds reporting within target window",
       tone: stalePonds.length > 0 ? "warning" : "success",
-      href: "#stale-activity",
+      href: "/admin/ponds",
     },
     {
       label: "Activity (24h)",
@@ -542,7 +642,7 @@ export async function getDashboardOverview(days: number): Promise<DashboardOverv
       trend: `${formatSignedDelta(events24h - eventsPrevious24h)} vs previous 24h`,
       tone:
         events24h > eventsPrevious24h ? "success" : events24h < eventsPrevious24h ? "warning" : "neutral",
-      href: "/admin?days=1",
+      href: "/admin/records?days=1",
     },
     {
       label: "Active Ponds",
@@ -553,7 +653,7 @@ export async function getDashboardOverview(days: number): Promise<DashboardOverv
           ? `${pluralize(totalPonds - activePonds, "pond")} inactive`
           : "All ponds marked active",
       tone: "neutral",
-      href: "#pond-health",
+      href: "/admin/ponds",
     },
     {
       label: "Settings Changes",
@@ -571,7 +671,7 @@ export async function getDashboardOverview(days: number): Promise<DashboardOverv
     attentionItems,
     recentEvents: timelineItems,
     counts: {
-      pendingApprovals,
+      totalStaff,
       lowStockCount,
       stalePondsCount: stalePonds.length,
       activePonds,
