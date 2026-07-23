@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, useEffect, useState } from "react";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { signOutAction } from "@/app/auth-actions";
 import type { ShellData } from "@/lib/admin-data";
@@ -60,7 +61,13 @@ export default function AdminShell({ children, userEmail, shellData }: AdminShel
         <div className="admin-sidebar-head">
           <div className="brand-lockup">
             <div className="brand-mark">
-              <img className="brand-logo" src="/media/branding/logo.png" alt="AquaPin logo" />
+              <Image
+                className="brand-logo"
+                src="/media/branding/logo.png"
+                alt="AquaPin logo"
+                width={48}
+                height={48}
+              />
               <div>
                 <p className="brand-kicker">AquaPin</p>
                 <h1 className="brand-title">Admin Console</h1>

@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 export default function GlobalError() {
   return (
     <html lang="en">
@@ -9,7 +11,7 @@ export default function GlobalError() {
             <p className="eyebrow">Something went wrong</p>
             <h1>Unable to load AquaPin.</h1>
             <p className="muted">Please refresh the page or return to the home page.</p>
-            <a className="primary-button" href="/">Go to AquaPin</a>
+            <Link className="primary-button" href="/">Go to AquaPin</Link>
           </section>
         </main>
       </body>
