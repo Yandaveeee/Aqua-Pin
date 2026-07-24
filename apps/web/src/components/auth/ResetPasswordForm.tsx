@@ -35,7 +35,7 @@ export default function ResetPasswordForm({ envLabel, version }: ResetPasswordFo
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    } = supabase.auth.onAuthStateChange((event: any, session: any) => {
       if (!active) return;
       if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
         setHasRecoverySession(Boolean(session));

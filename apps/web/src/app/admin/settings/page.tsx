@@ -17,47 +17,95 @@ type PublicProfileRow = Database["public"]["Tables"]["public_profiles"]["Row"];
 
 export default async function AdminSettingsPage({ searchParams }: AdminSettingsPageProps) {
   const params = searchParams ? await searchParams : undefined;
-  const supabase = await createSupabaseServerClient();
+  const { cookies } = await import("next/headers");
+  const cookieStore = await cookies();
+  const isMock = cookieStore.get("aquapin_mock_admin")?.value === "true";
 
-  const [settingsResult, auditResult] = await Promise.all([
-    supabase
-      .from("admin_settings")
-      .select("section, value, updated_by, updated_at")
-      .order("section", { ascending: true }),
-    supabase
-      .from("admin_settings_audit")
-      .select("id, section, previous_value, new_value, changed_by, changed_at")
-      .order("changed_at", { ascending: false })
-      .limit(20),
-  ]);
-
-  const settingsRows = (settingsResult.data ?? []) as AdminSettingsRow[];
-  const auditRows = (auditResult.data ?? []) as AdminSettingsAuditRow[];
-  const settingsError = settingsResult.error;
-  const auditError = auditResult.error;
-
-  if (settingsError) {
-    console.error("Failed to load admin settings:", settingsError.message);
-  }
-
-  if (auditError) {
-    console.error("Failed to load settings audit:", auditError.message);
-  }
-
-  const profileIds = new Set<string>();
-  auditRows.forEach((row) => profileIds.add(row.changed_by));
-  settingsRows.forEach((row) => {
-    if (row.updated_by) profileIds.add(row.updated_by);
-  });
-
+  let settingsRows: AdminSettingsRow[] = [];
+  let auditRows: AdminSettingsAuditRow[] = [];
   let profileEmailMap = new Map<string, string>();
-  if (profileIds.size > 0) {
-    const { data: profilesData } = await supabase
-      .from("public_profiles")
-      .select("id, email")
-      .in("id", Array.from(profileIds));
-    const profiles = (profilesData ?? []) as Pick<PublicProfileRow, "id" | "email">[];
-    profileEmailMap = new Map(profiles.map((profile) => [profile.id, profile.email]));
+
+  if (isMock) {
+    const { ADMIN_SETTINGS_DEFAULTS } = await import("@/lib/admin-settings");
+    settingsRows = (Object.keys(ADMIN_SETTINGS_DEFAULTS) as Array<keyof typeof ADMIN_SETTINGS_DEFAULTS>).map((section) => ({
+      section,
+      value: ADMIN_SETTINGS_DEFAULTS[section] as any,
+      updated_by: "system-mock-user-id",
+      updated_at: new Date().toISOString(),
+    })) as any;
+
+    auditRows = [
+      {
+        id: "mock-audit-1",
+        section: "operations",
+        previous_value: {
+          ...ADMIN_SETTINGS_DEFAULTS.operations,
+          lowStockThreshold: 1000,
+        } as any,
+        new_value: ADMIN_SETTINGS_DEFAULTS.operations as any,
+        changed_by: "system-mock-user-id",
+        changed_at: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+      },
+      {
+        id: "mock-audit-2",
+        section: "general",
+        previous_value: {
+          ...ADMIN_SETTINGS_DEFAULTS.general,
+          organizationName: "AquaPin Operations",
+        } as any,
+        new_value: {
+          ...ADMIN_SETTINGS_DEFAULTS.general,
+          organizationName: "AquaPin Laguna Farm (Mock)",
+        } as any,
+        changed_by: "system-mock-user-id",
+        changed_at: new Date(Date.now() - 5 * 3600 * 1000).toISOString(),
+      },
+    ] as any;
+
+    profileEmailMap = new Map([
+      ["system-mock-user-id", "admin@aquapin.com"]
+    ]);
+  } else {
+    const supabase = await createSupabaseServerClient();
+    const [settingsResult, auditResult] = await Promise.all([
+      supabase
+        .from("admin_settings")
+        .select("section, value, updated_by, updated_at")
+        .order("section", { ascending: true }),
+      supabase
+        .from("admin_settings_audit")
+        .select("id, section, previous_value, new_value, changed_by, changed_at")
+        .order("changed_at", { ascending: false })
+        .limit(20),
+    ]);
+
+    settingsRows = (settingsResult.data ?? []) as AdminSettingsRow[];
+    auditRows = (auditResult.data ?? []) as AdminSettingsAuditRow[];
+    const settingsError = settingsResult.error;
+    const auditError = auditResult.error;
+
+    if (settingsError) {
+      console.error("Failed to load admin settings:", settingsError.message);
+    }
+
+    if (auditError) {
+      console.error("Failed to load settings audit:", auditError.message);
+    }
+
+    const profileIds = new Set<string>();
+    auditRows.forEach((row) => profileIds.add(row.changed_by));
+    settingsRows.forEach((row) => {
+      if (row.updated_by) profileIds.add(row.updated_by);
+    });
+
+    if (profileIds.size > 0) {
+      const { data: profilesData } = await supabase
+        .from("public_profiles")
+        .select("id, email")
+        .in("id", Array.from(profileIds));
+      const profiles = (profilesData ?? []) as Pick<PublicProfileRow, "id" | "email">[];
+      profileEmailMap = new Map(profiles.map((profile) => [profile.id, profile.email]));
+    }
   }
 
   const sectionStates = buildSettingsSectionStates(settingsRows);
@@ -66,8 +114,8 @@ export default async function AdminSettingsPage({ searchParams }: AdminSettingsP
     <section className="stack">
       <AdminPageHeader
         eyebrow="Configuration"
-        title="Typed admin settings"
-        description="Manage console configuration with validated section editors and restoreable audit history."
+        title="Settings"
+        description="Manage essential organization, pond-alert, and notification settings for AquaPin."
       />
 
       {params?.saved ? (
@@ -101,7 +149,7 @@ export default async function AdminSettingsPage({ searchParams }: AdminSettingsP
           <div>
             <h3 className="panel-title">Section Editors</h3>
             <p className="panel-subtitle">
-              Each section is validated before save, then written through the audited admin RPC.
+              Keep the core settings that support the mobile field workflow up to date.
             </p>
           </div>
           <span className="ui-pill ui-pill-ghost">Structured forms</span>
