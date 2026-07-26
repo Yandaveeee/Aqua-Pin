@@ -170,7 +170,7 @@ type AuthContextType = {
   loading: boolean;
   isInitializing: boolean;
   signIn: (email: string, password: string) => Promise<{ error: AuthFailure | null }>;
-  signUp: (email: string, password: string) => Promise<{ error: AuthFailure | null; user: User | null; signedIn: boolean }>;
+  signUp: (email: string, password: string, fullName: string) => Promise<{ error: AuthFailure | null; user: User | null; signedIn: boolean }>;
   signOut: () => Promise<void>;
   refreshSession: () => Promise<void>;
 };
@@ -351,6 +351,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
 
           await resolveAuthState(data.session, { allowLegacyReset: true });
+          if (data.session) {
+            const { error: activityError } = await supabase.rpc('record_staff_session');
+            if (activityError) {
+              console.warn('Failed to record verified staff login activity:', activityError.message);
+            }
+          }
           return;
         }
 
@@ -363,6 +369,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
 
           await resolveAuthState(data.session, { allowLegacyReset: true });
+          if (data.session) {
+            const { error: activityError } = await supabase.rpc('record_staff_session');
+            if (activityError) {
+              console.warn('Failed to record verified staff login activity:', activityError.message);
+            }
+          }
         }
       } catch (error) {
         console.warn('Failed to handle auth callback URL:', error);
@@ -416,6 +428,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { error: getErrorDetails(error) };
       }
 
+      if (data.session) {
+        const { error: activityError } = await supabase.rpc('record_staff_session');
+        if (activityError) {
+          console.warn('Failed to record staff login activity:', activityError.message);
+        }
+      }
+
       return { error: null };
     } catch (err) {
       console.error('Sign in error:', err);
@@ -425,7 +444,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const signUp = useCallback(async (email: string, password: string): Promise<{ error: AuthFailure | null; user: User | null; signedIn: boolean }> => {
+  const signUp = useCallback(async (email: string, password: string, fullName: string): Promise<{ error: AuthFailure | null; user: User | null; signedIn: boolean }> => {
     if (!isSupabaseConfigured()) {
       return {
         error: {
@@ -444,6 +463,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         options: {
           emailRedirectTo: CONFIG.auth.emailRedirectUrl,
           data: {
+            full_name: fullName.trim().replace(/\s+/g, ' '),
             role: 'field_staff',
             status: 'approved',
           },
@@ -452,6 +472,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         return { error: getErrorDetails(error), user: null, signedIn: false };
+      }
+
+      if (data.session) {
+        const { error: activityError } = await supabase.rpc('record_staff_session');
+        if (activityError) {
+          console.warn('Failed to record initial staff login activity:', activityError.message);
+        }
       }
 
       // public_profiles is created by the auth.users trigger. Client inserts are blocked by RLS.

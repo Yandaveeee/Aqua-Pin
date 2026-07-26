@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,12 +15,14 @@ import {
   ScrollView,
   Dimensions,
 } from 'react-native';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, Region, MapPressEvent, MapType, Polygon, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { usePonds, useCreatePond } from '../hooks/useOfflineData';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 // Types
 interface Coordinate {
@@ -31,6 +33,15 @@ interface Coordinate {
 interface PondBoundary {
   coordinates: Coordinate[];
   area: number;
+}
+
+interface MappedPond {
+  id: string;
+  name: string;
+  location: string;
+  center: Coordinate;
+  boundary: Coordinate[];
+  isActive: boolean;
 }
 
 type MapMode = 'view' | 'point' | 'polygon';
@@ -78,15 +89,51 @@ function formatArea(areaSqM: number): string {
 }
 
 function parseLocation(location: string): Coordinate | null {
-  const parts = location.split(',').map(p => parseFloat(p.trim()));
+  const parts = String(location || '').split(',').map(p => parseFloat(p.trim()));
   if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
     return { latitude: parts[0], longitude: parts[1] };
   }
   return null;
 }
 
+function normalizeCoordinate(value: any): Coordinate | null {
+  const latitude = typeof value?.latitude === 'number'
+    ? value.latitude
+    : typeof value?.lat === 'number'
+      ? value.lat
+      : NaN;
+  const longitude = typeof value?.longitude === 'number'
+    ? value.longitude
+    : typeof value?.lng === 'number'
+      ? value.lng
+      : NaN;
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return null;
+  }
+
+  return { latitude, longitude };
+}
+
+function parseBoundary(boundary: unknown): Coordinate[] {
+  if (!boundary) return [];
+
+  try {
+    const parsed = typeof boundary === 'string' ? JSON.parse(boundary) : boundary;
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map(normalizeCoordinate)
+      .filter((coordinate): coordinate is Coordinate => Boolean(coordinate));
+  } catch (_error) {
+    return [];
+  }
+}
+
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
+  const route = useRoute<any>();
+  const navigation = useNavigation<any>();
   const mapProvider = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined;
   const mapRef = useRef<MapView | null>(null);
 
@@ -103,11 +150,14 @@ export default function MapScreen() {
   const [pondName, setPondName] = useState('');
   const [loading, setLoading] = useState(false);
   const [locating, setLocating] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
   const [mapType, setMapType] = useState<MapType>('standard');
   const [keyboardOffset, setKeyboardOffset] = useState(0);
   const { ponds } = usePonds();
   const createPond = useCreatePond();
   const { user } = useAuth();
+  const lastPondFitSignatureRef = useRef('');
+  const hasMappedPondsRef = useRef(false);
   const restingSheetBottom = Math.max(insets.bottom, MIN_BOTTOM_SHEET_SAFE_GAP);
   const keyboardClearance = Platform.OS === 'android' ? ANDROID_KEYBOARD_CLEARANCE : IOS_KEYBOARD_CLEARANCE;
   const sheetBottom = keyboardOffset > 0
@@ -118,6 +168,17 @@ export default function MapScreen() {
     Dimensions.get('window').height - sheetBottom - insets.top - MODAL_TOP_SAFE_GAP
   );
 
+  useEffect(() => {
+    const initialMode = route.params?.initialMode as MapMode | undefined;
+    if (!initialMode || !['view', 'point', 'polygon'].includes(initialMode)) {
+      return;
+    }
+
+    setMapMode(initialMode);
+    setSelectedLocation(null);
+    setPolygonPoints([]);
+  }, [route.params?.initialMode, route.params?.requestKey]);
+
   const focusRegion = useCallback((nextRegion: Region, animated = true) => {
     setRegion(nextRegion);
 
@@ -126,7 +187,108 @@ export default function MapScreen() {
     }
   }, []);
 
+  const mappedPonds = useMemo<MappedPond[]>(() => {
+    return ponds
+      .map((pond: any) => {
+        const center = parseLocation(pond.location);
+        if (!center) return null;
+
+        return {
+          id: String(pond.id),
+          name: pond.name || 'Unnamed Pond',
+          location: pond.location || '',
+          center,
+          boundary: parseBoundary(pond.boundary),
+          isActive: Boolean(pond.isActive),
+        };
+      })
+      .filter((pond): pond is MappedPond => Boolean(pond));
+  }, [ponds]);
+
+  const mappedCoordinates = useMemo(() => {
+    return mappedPonds.flatMap((pond) => (
+      pond.boundary.length >= 3 ? [pond.center, ...pond.boundary] : [pond.center]
+    ));
+  }, [mappedPonds]);
+
+  const mappedPondSignature = useMemo(() => {
+    return mappedCoordinates
+      .map((coordinate) => `${coordinate.latitude.toFixed(6)},${coordinate.longitude.toFixed(6)}`)
+      .join('|');
+  }, [mappedCoordinates]);
+
   useEffect(() => {
+    hasMappedPondsRef.current = mappedPonds.length > 0;
+  }, [mappedPonds.length]);
+
+  const fitToMarkedPonds = useCallback((animated = true) => {
+    if (mappedCoordinates.length === 0 || !mapRef.current) {
+      return false;
+    }
+
+    if (mappedCoordinates.length === 1) {
+      const coordinate = mappedCoordinates[0];
+      focusRegion({
+        latitude: coordinate.latitude,
+        longitude: coordinate.longitude,
+        latitudeDelta: 0.0045,
+        longitudeDelta: 0.0045,
+      }, animated);
+      return true;
+    }
+
+    mapRef.current.fitToCoordinates(mappedCoordinates, {
+      edgePadding: { top: 160, right: 60, bottom: 180, left: 60 },
+      animated,
+    });
+
+    return true;
+  }, [focusRegion, mappedCoordinates]);
+
+  const persistLatestLocation = useCallback(async (location: Location.LocationObject) => {
+    if (!user) return;
+
+    try {
+      let address: Location.LocationGeocodedAddress | undefined;
+      try {
+        const addresses = await Location.reverseGeocodeAsync({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        });
+        address = addresses[0];
+      } catch (error) {
+        console.warn('Reverse geocoding was unavailable:', error);
+      }
+
+      const addressParts = [
+        address?.name,
+        address?.street,
+        address?.district,
+        address?.city,
+        address?.region,
+      ].filter((part, index, values): part is string => Boolean(part) && values.indexOf(part) === index);
+
+      const { error } = await supabase.rpc('update_staff_location', {
+        p_latitude: location.coords.latitude,
+        p_longitude: location.coords.longitude,
+        p_accuracy_m: location.coords.accuracy ?? null,
+        p_location_label: addressParts.length > 0 ? addressParts.join(', ') : null,
+        p_municipality: address?.city || address?.subregion || null,
+        p_barangay: address?.district || null,
+        p_region: address?.region || null,
+      });
+
+      if (error) {
+        console.warn('Failed to persist latest staff location:', error.message);
+      }
+    } catch (error) {
+      console.warn('Failed to prepare latest staff location:', error);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    let cancelled = false;
+
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
@@ -135,6 +297,16 @@ export default function MapScreen() {
       }
 
       const location = await Location.getCurrentPositionAsync({});
+      if (cancelled) {
+        return;
+      }
+
+      void persistLatestLocation(location);
+
+      if (hasMappedPondsRef.current) {
+        return;
+      }
+
       focusRegion({
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
@@ -142,7 +314,28 @@ export default function MapScreen() {
         longitudeDelta: 0.0045,
       });
     })();
-  }, [focusRegion]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [focusRegion, persistLatestLocation]);
+
+  useEffect(() => {
+    if (!mapReady || mapMode !== 'view' || mappedCoordinates.length === 0) {
+      return;
+    }
+
+    if (lastPondFitSignatureRef.current === mappedPondSignature) {
+      return;
+    }
+
+    lastPondFitSignatureRef.current = mappedPondSignature;
+    const timer = setTimeout(() => {
+      fitToMarkedPonds(true);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [fitToMarkedPonds, mapMode, mapReady, mappedCoordinates.length, mappedPondSignature]);
 
   useEffect(() => {
     const keyboardShowEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -348,43 +541,26 @@ export default function MapScreen() {
         showsMyLocationButton={false}
         provider={mapProvider}
         mapType={mapType}
+        onMapReady={() => setMapReady(true)}
       >
         {/* Existing pond markers and polygons */}
-        {ponds.map((pond) => {
-          const coords = parseLocation(pond.location);
-          if (!coords) return null;
-
-          const pondAny = pond as any;
-          const hasBoundary = pondAny.boundary;
-          let boundaryCoords: Coordinate[] = [];
-
-          if (hasBoundary) {
-            try {
-              boundaryCoords = JSON.parse(hasBoundary);
-            } catch (e) {
-              // Invalid boundary data
-            }
-          }
-
+        {mappedPonds.map((pond) => {
           return (
-            <React.Fragment key={pondAny.id}>
-              {/* Show polygon if boundary exists */}
-              {boundaryCoords.length >= 3 ? (
+            <React.Fragment key={pond.id}>
+              {pond.boundary.length >= 3 && (
                 <Polygon
-                  coordinates={boundaryCoords}
-                  fillColor="rgba(0, 123, 255, 0.3)"
-                  strokeColor="#007bff"
+                  coordinates={pond.boundary}
+                  fillColor={pond.isActive ? 'rgba(0, 123, 255, 0.3)' : 'rgba(22, 163, 74, 0.24)'}
+                  strokeColor={pond.isActive ? '#007bff' : '#16a34a'}
                   strokeWidth={2}
                 />
-              ) : (
-                /* Show marker only for point-based ponds */
-                <Marker
-                  coordinate={coords}
-                  title={pond.name}
-                  description={pond.location}
-                  pinColor="#007bff"
-                />
               )}
+              <Marker
+                coordinate={pond.center}
+                title={pond.name}
+                description={pond.boundary.length >= 3 ? 'Boundary mapped' : pond.location}
+                pinColor={pond.isActive ? '#007bff' : '#16a34a'}
+              />
             </React.Fragment>
           );
         })}
@@ -438,10 +614,18 @@ export default function MapScreen() {
       <SafeAreaView style={styles.headerContainer} edges={['top', 'left', 'right']}>
         <View style={styles.header}>
           <View style={styles.headerContent}>
-            <View>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => navigation.goBack()}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Ionicons name="chevron-back" size={22} color="#1a1a1a" />
+            </TouchableOpacity>
+            <View style={styles.headerTextContainer}>
               <Text style={styles.headerTitle}>Pond Map</Text>
               <Text style={styles.headerSubtitle}>
-                {ponds.length} pond{ponds.length !== 1 ? 's' : ''} registered
+                {mappedPonds.length} marked / {ponds.length} registered
               </Text>
             </View>
             <View style={styles.headerActions}>
@@ -477,6 +661,16 @@ export default function MapScreen() {
               <Ionicons name="locate-outline" size={18} color="#0b6cd4" />
             )}
           </TouchableOpacity>
+          {mappedPonds.length > 0 && (
+            <TouchableOpacity
+              style={styles.mapLocateButton}
+              onPress={() => fitToMarkedPonds(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Show all marked ponds"
+            >
+              <Ionicons name="scan-outline" size={18} color="#0b6cd4" />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Mode indicator */}
@@ -493,6 +687,13 @@ export default function MapScreen() {
           <View style={styles.emptyMapHint}>
             <Ionicons name="information-circle-outline" size={16} color="#0b6aa8" />
             <Text style={styles.emptyMapHintText}>No ponds yet. Tap Add Pond to add your first pond.</Text>
+          </View>
+        )}
+
+        {mapMode === 'view' && ponds.length > 0 && mappedPonds.length === 0 && (
+          <View style={styles.emptyMapHint}>
+            <Ionicons name="information-circle-outline" size={16} color="#0b6aa8" />
+            <Text style={styles.emptyMapHintText}>No saved pond coordinates found yet.</Text>
           </View>
         )}
 
@@ -731,6 +932,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  headerTextContainer: {
+    flex: 1,
   },
   headerActions: {
     flexDirection: 'row',

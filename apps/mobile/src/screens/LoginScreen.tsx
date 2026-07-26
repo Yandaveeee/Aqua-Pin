@@ -19,6 +19,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { aquapinColors } from '../theme/aquapin';
 
 const validateEmail = (email: string): boolean => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -34,13 +35,15 @@ const validatePassword = (password: string): string | null => {
 };
 
 interface FormErrors {
+  fullName?: string;
   email?: string;
   password?: string;
 }
 
-type FocusField = 'email' | 'password' | null;
+type FocusField = 'fullName' | 'email' | 'password' | null;
 
 export default function LoginScreen() {
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
@@ -56,6 +59,7 @@ export default function LoginScreen() {
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const buttonScale = useRef(new Animated.Value(1)).current;
   const iconRotate = useRef(new Animated.Value(0)).current;
+  const fullNameInputRef = useRef<TextInput>(null);
   const emailInputRef = useRef<TextInput>(null);
   const passwordInputRef = useRef<TextInput>(null);
   const submitInFlightRef = useRef(false);
@@ -92,6 +96,7 @@ export default function LoginScreen() {
       }).start(() => {
         setIsSignUp(toSignUp);
         setErrors({});
+        setFullName('');
         setPassword('');
         setShowPassword(false);
 
@@ -127,7 +132,18 @@ export default function LoginScreen() {
 
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
+    const normalizedFullName = fullName.trim().replace(/\s+/g, ' ');
     const normalizedEmail = email.trim().toLowerCase();
+
+    if (isSignUp) {
+      if (!normalizedFullName) {
+        newErrors.fullName = 'Full name is required';
+      } else if (normalizedFullName.length < 3 || normalizedFullName.length > 80) {
+        newErrors.fullName = 'Enter a full name between 3 and 80 characters';
+      } else if (normalizedFullName.split(' ').length < 2) {
+        newErrors.fullName = 'Enter your first and last name';
+      }
+    }
 
     if (!normalizedEmail) {
       newErrors.email = 'Email is required';
@@ -166,7 +182,11 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       if (isSignUp) {
-        const { error, signedIn } = await signUp(normalizedEmail, password);
+        const { error, signedIn } = await signUp(
+          normalizedEmail,
+          password,
+          fullName.trim().replace(/\s+/g, ' ')
+        );
         if (error) {
           if (error.isRateLimit) {
             setCooldownUntil(Date.now() + (error.retryAfterSeconds || 60) * 1000);
@@ -175,7 +195,7 @@ export default function LoginScreen() {
         } else if (!signedIn) {
           Alert.alert(
             'Account Created',
-            'Your account was created. Open the verification email on this device; the link should return to AquaPin. If it still opens localhost, add aquapin://auth/callback to Supabase Auth Redirect URLs.',
+            'Your account was created. Open the verification email on this device; the link should return to Aquapin. If it still opens localhost, add aquapin://auth/callback to Supabase Auth Redirect URLs.',
             [
             {
               text: 'OK',
@@ -201,7 +221,7 @@ export default function LoginScreen() {
   };
 
   const getPasswordStrength = (): { strength: number; color: string; label: string } => {
-    if (password.length === 0) return { strength: 0, color: '#334155', label: '' };
+    if (password.length === 0) return { strength: 0, color: aquapinColors.textMuted, label: '' };
 
     let score = 0;
     if (password.length >= 8) score++;
@@ -211,12 +231,17 @@ export default function LoginScreen() {
     if (/[0-9]/.test(password)) score++;
     if (/[^A-Za-z0-9]/.test(password)) score++;
 
-    if (score <= 2) return { strength: 0.33, color: '#ef4444', label: 'Weak' };
-    if (score <= 4) return { strength: 0.66, color: '#f59e0b', label: 'Medium' };
-    return { strength: 1, color: '#10b981', label: 'Strong' };
+    if (score <= 2) return { strength: 0.33, color: aquapinColors.red, label: 'Weak' };
+    if (score <= 4) return { strength: 0.66, color: aquapinColors.amber, label: 'Medium' };
+    return { strength: 1, color: aquapinColors.green, label: 'Strong' };
   };
 
   const passwordStrength = getPasswordStrength();
+  const normalizedFullName = fullName.trim().replace(/\s+/g, ' ');
+  const fullNameIsValid =
+    normalizedFullName.length >= 3 &&
+    normalizedFullName.length <= 80 &&
+    normalizedFullName.split(' ').length >= 2;
   const normalizedEmail = email.trim();
   const signUpPasswordError = isSignUp ? validatePassword(password) : null;
   const remainingCooldownSeconds = cooldownUntil ? Math.max(0, Math.ceil((cooldownUntil - currentTime) / 1000)) : 0;
@@ -226,7 +251,7 @@ export default function LoginScreen() {
     !isCooldownActive &&
     validateEmail(normalizedEmail) &&
     password.length > 0 &&
-    (!isSignUp || !signUpPasswordError);
+    (!isSignUp || (fullNameIsValid && !signUpPasswordError));
 
   const iconRotation = iconRotate.interpolate({
     inputRange: [0, 1],
@@ -260,21 +285,27 @@ export default function LoginScreen() {
                 />
               </Animated.View>
               <View>
-                <Text style={styles.title}>AquaPin</Text>
-                <Text style={styles.subtitle}>Field Operations</Text>
+                <Text style={styles.title}>
+                  Aqua<Text style={styles.titleAccent}>pin</Text>
+                </Text>
+                <Text style={styles.subtitle}>Aquapin Version 2.0</Text>
               </View>
             </View>
             <Text style={styles.headerBlurb}>
-              Map ponds, log farm events, and sync data from anywhere.
+              Manage ponds, farm records, offline sync, and AI insights in one modern aquaculture workspace.
             </Text>
             <View style={styles.headerMetaRow}>
               <View style={styles.headerMetaPill}>
-                <Ionicons name="cloud-done-outline" size={14} color="#0b6aa8" />
-                <Text style={styles.headerMetaText}>Offline-ready</Text>
+                <Ionicons name="map-outline" size={14} color={aquapinColors.blue} />
+                <Text style={styles.headerMetaText}>GPS mapping</Text>
               </View>
               <View style={styles.headerMetaPill}>
-                <Ionicons name="shield-checkmark-outline" size={14} color="#0b8f6a" />
-                <Text style={styles.headerMetaText}>Secure sync</Text>
+                <Ionicons name="cloud-done-outline" size={14} color={aquapinColors.green} />
+                <Text style={styles.headerMetaText}>Offline sync</Text>
+              </View>
+              <View style={styles.headerMetaPill}>
+                <Ionicons name="sparkles-outline" size={14} color={aquapinColors.teal} />
+                <Text style={styles.headerMetaText}>AI insights</Text>
               </View>
             </View>
           </View>
@@ -310,18 +341,70 @@ export default function LoginScreen() {
             <Text style={styles.formTitle}>{isSignUp ? 'Create Account' : 'Welcome Back'}</Text>
             <Text style={styles.formSubtitle}>
               {isSignUp
-                ? 'Create your field staff account and start immediately.'
-                : 'Sign in to continue to your field dashboard.'}
+                ? 'Create your Aquapin farm workspace and start tracking ponds immediately.'
+                : 'Sign in to continue to your Aquapin dashboard.'}
             </Text>
             {isCooldownActive && (
               <View style={styles.noticeCard}>
-                <Ionicons name="time-outline" size={18} color="#b45309" />
+                <Ionicons name="time-outline" size={18} color={aquapinColors.amber} />
                 <View style={styles.noticeCopy}>
                   <Text style={styles.noticeTitle}>Please wait before trying again</Text>
                   <Text style={styles.noticeText}>
                     Too many auth attempts were sent. Try again in {remainingCooldownSeconds}s.
                   </Text>
                 </View>
+              </View>
+            )}
+
+            {isSignUp && (
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Full Name</Text>
+                <Pressable
+                  style={[
+                    styles.inputWrapper,
+                    focusedField === 'fullName' && styles.inputWrapperFocused,
+                    errors.fullName && styles.inputWrapperError,
+                  ]}
+                  onPress={() => fullNameInputRef.current?.focus()}
+                >
+                  <Ionicons
+                    name="person-outline"
+                    size={20}
+                    color={errors.fullName ? aquapinColors.red : focusedField === 'fullName' ? aquapinColors.blue : aquapinColors.textMuted}
+                    style={styles.leftIcon}
+                  />
+                  <TextInput
+                    ref={fullNameInputRef}
+                    style={styles.input}
+                    value={fullName}
+                    onChangeText={(text) => {
+                      setFullName(text);
+                      if (errors.fullName) setErrors((prev) => ({ ...prev, fullName: undefined }));
+                    }}
+                    placeholder="Juan Dela Cruz"
+                    autoCapitalize="words"
+                    autoComplete="name"
+                    textContentType="name"
+                    returnKeyType="next"
+                    blurOnSubmit={false}
+                    editable={!loading}
+                    onSubmitEditing={() => emailInputRef.current?.focus()}
+                    onFocus={() => setFocusedField('fullName')}
+                    onBlur={() => setFocusedField((prev) => (prev === 'fullName' ? null : prev))}
+                    placeholderTextColor={aquapinColors.textMuted}
+                    autoCorrect={false}
+                    maxLength={80}
+                  />
+                  {fullNameIsValid && (
+                    <Ionicons name="checkmark-circle" size={20} color={aquapinColors.green} style={styles.trailingIcon} />
+                  )}
+                </Pressable>
+                {errors.fullName && (
+                  <View style={styles.errorContainer}>
+                    <Ionicons name="alert-circle" size={14} color={aquapinColors.red} />
+                    <Text style={styles.errorText}>{errors.fullName}</Text>
+                  </View>
+                )}
               </View>
             )}
 
@@ -338,7 +421,7 @@ export default function LoginScreen() {
                 <Ionicons
                   name="mail-outline"
                   size={20}
-                  color={errors.email ? '#f87171' : focusedField === 'email' ? '#42c7ff' : '#7f95b7'}
+                  color={errors.email ? aquapinColors.red : focusedField === 'email' ? aquapinColors.blue : aquapinColors.textMuted}
                   style={styles.leftIcon}
                 />
                 <TextInput
@@ -350,7 +433,6 @@ export default function LoginScreen() {
                     if (errors.email) setErrors((prev) => ({ ...prev, email: undefined }));
                   }}
                   placeholder="you@example.com"
-                  placeholderTextColor="#68809f"
                   autoCapitalize="none"
                   autoComplete="email"
                   textContentType="emailAddress"
@@ -361,17 +443,18 @@ export default function LoginScreen() {
                   onSubmitEditing={() => passwordInputRef.current?.focus()}
                   onFocus={() => setFocusedField('email')}
                   onBlur={() => setFocusedField((prev) => (prev === 'email' ? null : prev))}
+                  placeholderTextColor={aquapinColors.textMuted}
                   autoCorrect={false}
                   spellCheck={false}
                   showSoftInputOnFocus
                 />
                 {normalizedEmail.length > 0 && validateEmail(normalizedEmail) && (
-                  <Ionicons name="checkmark-circle" size={20} color="#34d399" style={styles.trailingIcon} />
+                  <Ionicons name="checkmark-circle" size={20} color={aquapinColors.green} style={styles.trailingIcon} />
                 )}
               </Pressable>
               {errors.email && (
                 <View style={styles.errorContainer}>
-                  <Ionicons name="alert-circle" size={14} color="#f87171" />
+                  <Ionicons name="alert-circle" size={14} color={aquapinColors.red} />
                   <Text style={styles.errorText}>{errors.email}</Text>
                 </View>
               )}
@@ -390,7 +473,7 @@ export default function LoginScreen() {
                 <Ionicons
                   name="lock-closed-outline"
                   size={20}
-                  color={errors.password ? '#f87171' : focusedField === 'password' ? '#42c7ff' : '#7f95b7'}
+                  color={errors.password ? aquapinColors.red : focusedField === 'password' ? aquapinColors.blue : aquapinColors.textMuted}
                   style={styles.leftIcon}
                 />
                 <TextInput
@@ -402,7 +485,6 @@ export default function LoginScreen() {
                     if (errors.password) setErrors((prev) => ({ ...prev, password: undefined }));
                   }}
                   placeholder="••••••••"
-                  placeholderTextColor="#68809f"
                   secureTextEntry={!showPassword}
                   autoComplete={isSignUp ? 'new-password' : 'password'}
                   textContentType={isSignUp ? 'newPassword' : 'password'}
@@ -411,6 +493,7 @@ export default function LoginScreen() {
                   onSubmitEditing={handleSubmit}
                   onFocus={() => setFocusedField('password')}
                   onBlur={() => setFocusedField((prev) => (prev === 'password' ? null : prev))}
+                  placeholderTextColor={aquapinColors.textMuted}
                   autoCorrect={false}
                   spellCheck={false}
                   showSoftInputOnFocus
@@ -422,12 +505,12 @@ export default function LoginScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7f95b7" />
+                  <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={aquapinColors.textMuted} />
                 </TouchableOpacity>
               </Pressable>
               {errors.password && (
                 <View style={styles.errorContainer}>
-                  <Ionicons name="alert-circle" size={14} color="#f87171" />
+                  <Ionicons name="alert-circle" size={14} color={aquapinColors.red} />
                   <Text style={styles.errorText}>{errors.password}</Text>
                 </View>
               )}
@@ -475,7 +558,7 @@ export default function LoginScreen() {
               >
                 {loading ? (
                   <View style={styles.loadingContainer}>
-                    <ActivityIndicator color="#fff" size="small" />
+                    <ActivityIndicator color={aquapinColors.surface} size="small" />
                     <Text style={styles.loadingText}>{isSignUp ? 'Creating account...' : 'Signing in...'}</Text>
                   </View>
                 ) : (
@@ -490,7 +573,7 @@ export default function LoginScreen() {
                     <Ionicons
                       name={isCooldownActive ? 'time-outline' : isSignUp ? 'arrow-forward' : 'log-in-outline'}
                       size={20}
-                      color="#fff"
+                      color={aquapinColors.surface}
                       style={styles.buttonIcon}
                     />
                   </View>
@@ -517,10 +600,10 @@ export default function LoginScreen() {
 
           <View style={styles.footer}>
             <View style={styles.footerBadge}>
-              <Ionicons name="shield-checkmark" size={14} color="#34d399" />
-              <Text style={styles.footerBrand}>AquaPin Secure</Text>
+              <Ionicons name="shield-checkmark" size={14} color={aquapinColors.green} />
+              <Text style={styles.footerBrand}>Aquapin Secure</Text>
             </View>
-            <Text style={styles.footerText}>Offline-ready • Encrypted sync • Field-first workflow</Text>
+            <Text style={styles.footerText}>Offline-ready • Encrypted sync • Farm-first workflow</Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -531,7 +614,7 @@ export default function LoginScreen() {
 function RequirementItem({ met, text }: { met: boolean; text: string }) {
   return (
     <View style={styles.requirementItem}>
-      <Ionicons name={met ? 'checkmark-circle' : 'ellipse-outline'} size={13} color={met ? '#34d399' : '#6583ad'} />
+      <Ionicons name={met ? 'checkmark-circle' : 'ellipse-outline'} size={13} color={met ? aquapinColors.green : aquapinColors.textMuted} />
       <Text style={[styles.requirementText, met && styles.requirementMet]}>{text}</Text>
     </View>
   );
@@ -540,7 +623,7 @@ function RequirementItem({ met, text }: { met: boolean; text: string }) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f5fbff',
+    backgroundColor: aquapinColors.background,
   },
   backgroundLayer: {
     ...StyleSheet.absoluteFillObject,
@@ -552,7 +635,7 @@ const styles = StyleSheet.create({
     borderRadius: 120,
     right: -90,
     top: -80,
-    backgroundColor: 'rgba(14, 165, 233, 0.14)',
+    backgroundColor: 'rgba(30, 90, 167, 0.14)',
   },
   orbBottom: {
     position: 'absolute',
@@ -561,7 +644,7 @@ const styles = StyleSheet.create({
     borderRadius: 140,
     left: -120,
     bottom: -130,
-    backgroundColor: 'rgba(34, 197, 94, 0.08)',
+    backgroundColor: 'rgba(102, 184, 63, 0.12)',
   },
   keyboardView: {
     flex: 1,
@@ -569,26 +652,36 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
     paddingVertical: 24,
   },
   header: {
-    marginBottom: 20,
+    marginBottom: 18,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(216, 229, 241, 0.9)',
+    padding: 18,
+    shadowColor: '#18355d',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    elevation: 3,
   },
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   iconCircle: {
-    width: 66,
-    height: 66,
-    borderRadius: 33,
-    backgroundColor: '#ffffff',
+    width: 68,
+    height: 68,
+    borderRadius: 22,
+    backgroundColor: aquapinColors.surface,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,
     borderWidth: 1,
-    borderColor: 'rgba(14, 165, 233, 0.16)',
+    borderColor: aquapinColors.border,
     shadowColor: '#7da4c5',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.16,
@@ -602,23 +695,27 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 30,
-    fontWeight: '800',
-    color: '#102132',
+    fontWeight: '900',
+    color: aquapinColors.blue,
     letterSpacing: 0.4,
+  },
+  titleAccent: {
+    color: aquapinColors.green,
   },
   subtitle: {
     fontSize: 12,
-    color: '#0b6aa8',
+    color: aquapinColors.textMuted,
     marginTop: 2,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
-    fontWeight: '600',
+    fontWeight: '800',
   },
   headerBlurb: {
     marginTop: 14,
-    color: '#51687f',
+    color: aquapinColors.text,
     fontSize: 14,
     lineHeight: 21,
+    fontWeight: '600',
   },
   headerMetaRow: {
     flexDirection: 'row',
@@ -632,68 +729,68 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 7,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    borderRadius: 999,
+    backgroundColor: aquapinColors.surface,
     borderWidth: 1,
-    borderColor: '#d7e7f2',
+    borderColor: aquapinColors.border,
   },
   headerMetaText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#355067',
+    color: aquapinColors.text,
   },
   formCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.98)',
-    borderRadius: 22,
+    backgroundColor: aquapinColors.surface,
+    borderRadius: 28,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#d9e8f1',
-    shadowColor: '#94a3b8',
+    borderColor: aquapinColors.border,
+    shadowColor: '#18355d',
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.12,
     shadowRadius: 24,
     elevation: 8,
   },
   toggleContainer: {
     flexDirection: 'row',
-    backgroundColor: '#edf4fa',
-    borderRadius: 12,
+    backgroundColor: aquapinColors.surfaceMuted,
+    borderRadius: 18,
     padding: 4,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#d6e5ef',
+    borderColor: aquapinColors.border,
   },
   toggleButton: {
     flex: 1,
     paddingVertical: 10,
     alignItems: 'center',
-    borderRadius: 10,
+    borderRadius: 15,
   },
   toggleButtonActive: {
-    backgroundColor: '#0ea5e9',
-    shadowColor: '#0ea5e9',
+    backgroundColor: aquapinColors.blue,
+    shadowColor: aquapinColors.blue,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.28,
     shadowRadius: 12,
     elevation: 3,
   },
   toggleText: {
-    color: '#60758b',
+    color: aquapinColors.textMuted,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '800',
   },
   toggleTextActive: {
-    color: '#ffffff',
+    color: aquapinColors.surface,
   },
   formTitle: {
     fontSize: 22,
-    fontWeight: '800',
-    color: '#102132',
+    fontWeight: '900',
+    color: aquapinColors.text,
     marginBottom: 4,
   },
   formSubtitle: {
     fontSize: 14,
-    color: '#62758a',
+    color: aquapinColors.textMuted,
     marginBottom: 18,
     lineHeight: 20,
   },
@@ -703,55 +800,55 @@ const styles = StyleSheet.create({
     gap: 10,
     padding: 12,
     marginBottom: 16,
-    borderRadius: 12,
-    backgroundColor: '#fff7ed',
+    borderRadius: 18,
+    backgroundColor: aquapinColors.amberSoft,
     borderWidth: 1,
-    borderColor: '#fed7aa',
+    borderColor: '#f3dc9c',
   },
   noticeCopy: {
     flex: 1,
   },
   noticeTitle: {
     fontSize: 13,
-    fontWeight: '700',
-    color: '#9a3412',
+    fontWeight: '800',
+    color: aquapinColors.amber,
     marginBottom: 2,
   },
   noticeText: {
     fontSize: 12,
     lineHeight: 18,
-    color: '#b45309',
+    color: aquapinColors.textMuted,
   },
   inputContainer: {
     marginBottom: 14,
   },
   label: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#446079',
+    fontWeight: '800',
+    color: aquapinColors.text,
     marginBottom: 6,
     marginLeft: 4,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8fbfd',
+    backgroundColor: aquapinColors.surfaceMuted,
     borderWidth: 1,
-    borderColor: '#d6e2ed',
-    borderRadius: 12,
+    borderColor: aquapinColors.border,
+    borderRadius: 18,
     paddingHorizontal: 14,
     minHeight: 52,
   },
   inputWrapperFocused: {
-    borderColor: '#0ea5e9',
-    shadowColor: '#0ea5e9',
+    borderColor: aquapinColors.blue,
+    shadowColor: aquapinColors.blue,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.12,
     shadowRadius: 10,
     elevation: 2,
   },
   inputWrapperError: {
-    borderColor: '#f87171',
+    borderColor: aquapinColors.red,
   },
   leftIcon: {
     marginRight: 10,
@@ -762,7 +859,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 15,
-    color: '#0f172a',
+    color: aquapinColors.text,
     paddingVertical: 12,
   },
   passwordInput: {
@@ -779,9 +876,9 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 12,
-    color: '#f87171',
+    color: aquapinColors.red,
     marginLeft: 6,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   strengthContainer: {
     marginTop: 10,
@@ -791,7 +888,7 @@ const styles = StyleSheet.create({
   strengthBarContainer: {
     flex: 1,
     height: 4,
-    backgroundColor: '#dce8f1',
+    backgroundColor: aquapinColors.border,
     borderRadius: 3,
     overflow: 'hidden',
     marginRight: 10,
@@ -809,10 +906,10 @@ const styles = StyleSheet.create({
   requirementsContainer: {
     marginTop: 12,
     padding: 12,
-    backgroundColor: '#f8fbfd',
-    borderRadius: 10,
+    backgroundColor: aquapinColors.surfaceMuted,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#dbe7ef',
+    borderColor: aquapinColors.border,
   },
   requirementItem: {
     flexDirection: 'row',
@@ -821,32 +918,32 @@ const styles = StyleSheet.create({
   },
   requirementText: {
     fontSize: 12,
-    color: '#698096',
+    color: aquapinColors.textMuted,
     marginLeft: 8,
   },
   requirementMet: {
-    color: '#34d399',
-    fontWeight: '600',
+    color: aquapinColors.green,
+    fontWeight: '700',
   },
   actionButton: {
-    backgroundColor: '#0284c7',
-    borderRadius: 12,
+    backgroundColor: aquapinColors.green,
+    borderRadius: 18,
     minHeight: 54,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 8,
-    shadowColor: '#0284c7',
+    shadowColor: aquapinColors.green,
     shadowOffset: { width: 0, height: 7 },
     shadowOpacity: 0.24,
     shadowRadius: 14,
     elevation: 4,
   },
   actionButtonDisabled: {
-    backgroundColor: '#93a8bb',
+    backgroundColor: aquapinColors.textMuted,
     opacity: 0.76,
   },
   actionButtonInactive: {
-    backgroundColor: '#bfd2e0',
+    backgroundColor: '#b9cadb',
     opacity: 0.76,
   },
   buttonContent: {
@@ -854,9 +951,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   actionButtonText: {
-    color: '#ffffff',
+    color: aquapinColors.surface,
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
     letterSpacing: 0.3,
   },
   buttonIcon: {
@@ -867,9 +964,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    color: '#ffffff',
+    color: aquapinColors.surface,
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
     marginLeft: 10,
   },
   helpContainer: {
@@ -878,16 +975,16 @@ const styles = StyleSheet.create({
     marginTop: 18,
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: '#e0ebf2',
+    borderTopColor: aquapinColors.border,
   },
   helpText: {
-    color: '#6d8197',
+    color: aquapinColors.textMuted,
     fontSize: 14,
   },
   helpLink: {
-    color: '#0b6aa8',
+    color: aquapinColors.blue,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   footer: {
     marginTop: 20,
@@ -896,23 +993,23 @@ const styles = StyleSheet.create({
   footerBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(224, 244, 255, 0.96)',
+    backgroundColor: aquapinColors.blueSoft,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 16,
+    borderRadius: 999,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#d4e6f2',
+    borderColor: aquapinColors.border,
   },
   footerBrand: {
-    color: '#0b6aa8',
+    color: aquapinColors.blue,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
     marginLeft: 6,
   },
   footerText: {
     fontSize: 12,
-    color: '#6f859b',
+    color: aquapinColors.textMuted,
     textAlign: 'center',
   },
 });

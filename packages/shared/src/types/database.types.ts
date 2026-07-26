@@ -13,24 +13,54 @@ export interface Database {
         Row: {
           id: string
           email: string
+          full_name: string | null
           role: 'admin' | 'field_staff'
           status: 'pending' | 'approved'
+          last_login_at: string | null
+          latest_latitude: number | null
+          latest_longitude: number | null
+          location_accuracy_m: number | null
+          location_label: string | null
+          municipality: string | null
+          barangay: string | null
+          region: string | null
+          location_updated_at: string | null
           created_at: string
           updated_at: string
         }
         Insert: {
           id: string
           email: string
+          full_name?: string | null
           role?: 'admin' | 'field_staff'
           status?: 'pending' | 'approved'
+          last_login_at?: string | null
+          latest_latitude?: number | null
+          latest_longitude?: number | null
+          location_accuracy_m?: number | null
+          location_label?: string | null
+          municipality?: string | null
+          barangay?: string | null
+          region?: string | null
+          location_updated_at?: string | null
           created_at?: string
           updated_at?: string
         }
         Update: {
           id?: string
           email?: string
+          full_name?: string | null
           role?: 'admin' | 'field_staff'
           status?: 'pending' | 'approved'
+          last_login_at?: string | null
+          latest_latitude?: number | null
+          latest_longitude?: number | null
+          location_accuracy_m?: number | null
+          location_label?: string | null
+          municipality?: string | null
+          barangay?: string | null
+          region?: string | null
+          location_updated_at?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -404,6 +434,22 @@ export interface Database {
           p_value: Json
         }
         Returns: Database['public']['Tables']['admin_settings']['Row']
+      }
+      record_staff_session: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      update_staff_location: {
+        Args: {
+          p_latitude: number
+          p_longitude: number
+          p_accuracy_m?: number | null
+          p_location_label?: string | null
+          p_municipality?: string | null
+          p_barangay?: string | null
+          p_region?: string | null
+        }
+        Returns: string
       }
     }
     Enums: {
