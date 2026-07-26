@@ -2,6 +2,42 @@ import Link from "next/link";
 import { formatRelativeTime } from "@/lib/admin-format";
 import { getDashboardOverview } from "@/lib/admin-data";
 
+function DashboardMetricIcon({ type }: { type: "ponds" | "staff" | "records" | "alerts" }) {
+  if (type === "ponds") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M12 3s6 6.2 6 11a6 6 0 0 1-12 0c0-4.8 6-11 6-11Z" />
+        <path d="M8.5 15.5c1.7 1.4 4.2 1.4 7 0" />
+      </svg>
+    );
+  }
+
+  if (type === "staff") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <circle cx="9" cy="7" r="4" />
+        <path d="M2 21v-2a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v2M17 8a4 4 0 0 1 0 7M22 21v-2a5 5 0 0 0-3-4.6" />
+      </svg>
+    );
+  }
+
+  if (type === "records") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <rect x="5" y="4" width="14" height="17" rx="2" />
+        <path d="M9 4.5V3h6v1.5M9 10h6M9 14h6" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M12 3 2.8 20h18.4L12 3Z" />
+      <path d="M12 9v5M12 17.5h.01" />
+    </svg>
+  );
+}
+
 export default async function AdminDashboardPage() {
   const overview = await getDashboardOverview(7);
   const alerts = overview.attentionItems.filter((item) => item.tone !== "info");
@@ -18,24 +54,32 @@ export default async function AdminDashboardPage() {
       value: `${overview.counts.activePonds}/${overview.counts.totalPonds}`,
       href: "/admin/ponds",
       tone: "success",
+      type: "ponds",
+      detail: overview.counts.lowStockCount > 0 ? `${overview.counts.lowStockCount} need review` : "All healthy",
     },
     {
       label: "Field staff",
       value: overview.counts.totalStaff.toString(),
       href: "/admin/users",
-      tone: "neutral",
+      tone: "info",
+      type: "staff",
+      detail: "On duty today",
     },
     {
       label: "Recent records",
       value: overview.recentEvents.length.toString(),
       href: "/admin/records?days=7",
-      tone: "info",
+      tone: "records",
+      type: "records",
+      detail: "Last 7 days",
     },
     {
       label: "Alerts",
       value: alerts.length.toString(),
       href: alerts.length > 0 ? "#dashboard-alerts" : "/admin/ponds",
       tone: alerts.length > 0 ? "danger" : "success",
+      type: "alerts",
+      detail: alerts.length > 0 ? "Needs attention" : "All clear",
     },
   ] as const;
 
@@ -48,8 +92,14 @@ export default async function AdminDashboardPage() {
             href={metric.href}
             key={metric.label}
           >
-            <span>{metric.label}</span>
+            <span className="dashboard-overview-metric-head">
+              <span className="dashboard-overview-metric-icon">
+                <DashboardMetricIcon type={metric.type} />
+              </span>
+              <span>{metric.label}</span>
+            </span>
             <strong>{metric.value}</strong>
+            <small><i />{metric.detail}</small>
           </Link>
         ))}
       </div>

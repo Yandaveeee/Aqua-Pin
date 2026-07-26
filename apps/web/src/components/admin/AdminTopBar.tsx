@@ -65,8 +65,8 @@ function getPageMeta(
   }
 
   return {
-    title: "Operations Dashboard",
-    description: "Track pond health, field staff, and recent mobile activity.",
+    title: "Operations",
+    description: "Track pond health and field activity.",
     shortcuts: [
       { href: "/admin/users", label: "Users" },
       { href: "/admin/settings", label: "Settings", badge: settingsChanges },
@@ -130,15 +130,35 @@ export default function AdminTopBar({
 
       <div className="admin-topbar-actions">
         <button
-          className="secondary-button"
+          className="secondary-button admin-action-button admin-action-refresh"
           type="button"
           onClick={() => startRefresh(() => router.refresh())}
         >
-          {refreshing ? "Refreshing..." : "Refresh"}
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M20 6v5h-5" />
+            <path d="M18.4 15a7 7 0 1 1-.8-7.8L20 11" />
+          </svg>
+          <span>{refreshing ? "Refreshing..." : "Refresh"}</span>
         </button>
 
         {pageMeta.shortcuts.map((shortcut) => (
-          <Link className="secondary-button admin-shortcut" key={shortcut.href} href={shortcut.href}>
+          <Link
+            className={`secondary-button admin-shortcut admin-action-button admin-action-${shortcut.label.toLowerCase()}`}
+            key={shortcut.href}
+            href={shortcut.href}
+          >
+            {shortcut.label === "Users" ? (
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M19 8v6M22 11h-6" />
+              </svg>
+            ) : shortcut.label === "Settings" ? (
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.1A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.1A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.1A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.17.38.38.72.6 1 .28.36.67.57 1.1.6h.1v4h-.1a1.7 1.7 0 0 0-1.7.4Z" />
+              </svg>
+            ) : null}
             <span>{shortcut.label}</span>
             {shortcut.badge && shortcut.badge > 0 ? (
               <span className="button-badge">{shortcut.badge}</span>
