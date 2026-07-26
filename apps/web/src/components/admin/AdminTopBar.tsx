@@ -98,9 +98,12 @@ export default function AdminTopBar({
           onClick={onMenuToggle}
           type="button"
         >
-          <span />
-          <span />
-          <span />
+          <span className="admin-menu-toggle-icon" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
+          <span className="admin-menu-toggle-label">Menu</span>
         </button>
 
         <div className="admin-topbar-copy">
@@ -108,10 +111,17 @@ export default function AdminTopBar({
             <span className="ui-pill ui-pill-ghost">{organizationName}</span>
             <span className="ui-pill ui-pill-info">{envLabel}</span>
             <span className={`ui-pill ${attentionCount > 0 ? "ui-pill-warning" : "ui-pill-success"}`}>
-              {attentionCount > 0 ? `${attentionCount} attention items` : "Operations stable"}
+              {attentionCount > 0 ? (
+                <>
+                  <span className="admin-attention-count">{attentionCount}</span>
+                  <span className="admin-attention-label"> attention items</span>
+                </>
+              ) : (
+                "Operations stable"
+              )}
             </span>
           </div>
-          <div>
+          <div className="admin-topbar-heading">
             <h1>{pageMeta.title}</h1>
             <p>{pageMeta.description}</p>
           </div>

@@ -57,7 +57,11 @@ export default function AdminShell({ children, userEmail, shellData }: AdminShel
         type="button"
       />
 
-      <aside className="admin-sidebar" id="admin-sidebar">
+      <aside
+        aria-label="Admin menu"
+        className="admin-sidebar"
+        id="admin-sidebar"
+      >
         <div className="admin-sidebar-head">
           <div className="brand-lockup">
             <div className="brand-mark">
@@ -87,7 +91,10 @@ export default function AdminShell({ children, userEmail, shellData }: AdminShel
           </button>
         </div>
 
-        <AdminSidebarNav items={navItems} />
+        <div className="admin-sidebar-navigation">
+          <p className="admin-nav-label">Workspace</p>
+          <AdminSidebarNav items={navItems} />
+        </div>
 
         <div className="admin-session">
           <p className="admin-session-label">Signed in as</p>
