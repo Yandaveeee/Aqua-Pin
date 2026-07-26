@@ -4534,6 +4534,39 @@ code {
   line-height: 1.1;
 }
 
+.pond-map-sidebar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.pond-map-list-toggle {
+  display: none;
+  min-height: 2rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  border: 1px solid #cfe0de;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #1d5f5b;
+  cursor: pointer;
+  padding: 0.3rem 0.55rem;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.pond-map-list-toggle svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .pond-map-stat-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -6376,6 +6409,239 @@ code {
 
   .admin-topbar-actions .secondary-button {
     width: auto;
+  }
+
+  /* Ponds is a viewport workspace: the page stays fixed while its list scrolls. */
+  .admin-main-workspace {
+    height: 100vh;
+    height: 100dvh;
+    grid-template-rows: 3.25rem minmax(0, 1fr);
+    gap: 0.5rem;
+    padding: 0.5rem;
+    overflow: hidden;
+  }
+
+  .admin-main-workspace .admin-topbar {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0;
+  }
+
+  .admin-main-workspace .admin-topbar-main {
+    display: grid;
+    grid-template-columns: 2.75rem minmax(0, 1fr);
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .admin-main-workspace .admin-topbar-meta,
+  .admin-main-workspace .admin-topbar-heading p {
+    display: none;
+  }
+
+  .admin-main-workspace .admin-topbar-heading {
+    grid-column: 2;
+    min-width: 0;
+  }
+
+  .admin-main-workspace .admin-topbar h1 {
+    overflow: hidden;
+    font-size: 1.35rem;
+    letter-spacing: -0.03em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .admin-main-workspace .admin-menu-toggle {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  .admin-main-workspace .admin-topbar-actions {
+    width: auto;
+    display: block;
+  }
+
+  .admin-main-workspace .admin-topbar-actions .secondary-button {
+    width: 2.75rem;
+    min-height: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    border-radius: 13px;
+  }
+
+  .admin-main-workspace .admin-topbar-actions .secondary-button span {
+    display: none;
+  }
+
+  .admin-main-workspace .admin-topbar-actions .secondary-button svg {
+    width: 1.3rem;
+    height: 1.3rem;
+  }
+
+  .admin-main-workspace .map-page-stack {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .admin-main-workspace .pond-map-shell {
+    height: 100%;
+    min-height: 0;
+    grid-template-columns: 1fr;
+    grid-template-rows: 10.75rem minmax(0, 1fr);
+    border-radius: 18px;
+    transition: grid-template-rows 180ms ease;
+  }
+
+  .admin-main-workspace .pond-map-shell.is-list-collapsed {
+    grid-template-rows: 3rem minmax(0, 1fr);
+  }
+
+  .admin-main-workspace .pond-map-sidebar {
+    min-height: 0;
+    grid-template-rows: 3rem 3.4rem minmax(0, 1fr);
+    border-right: 0;
+    border-bottom: 1px solid #dce8e7;
+  }
+
+  .admin-main-workspace .pond-map-sidebar-head {
+    min-height: 3rem;
+    align-items: center;
+    flex-direction: row;
+    padding: 0.45rem 0.6rem;
+  }
+
+  .admin-main-workspace .pond-map-sidebar-head h2 {
+    font-size: 1rem;
+  }
+
+  .admin-main-workspace .pond-map-sidebar-actions {
+    margin-left: auto;
+  }
+
+  .admin-main-workspace .pond-map-sidebar-actions .ui-pill {
+    min-height: 1.7rem;
+    padding: 0.2rem 0.5rem;
+    font-size: 0.68rem;
+  }
+
+  .admin-main-workspace .pond-map-list-toggle {
+    display: inline-flex;
+  }
+
+  .admin-main-workspace .pond-map-stat-grid {
+    display: none;
+  }
+
+  .admin-main-workspace .pond-map-filter-panel {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr);
+    gap: 0.4rem;
+    padding: 0.4rem 0.55rem;
+  }
+
+  .admin-main-workspace .pond-map-filter-panel .field-input {
+    min-width: 0;
+    min-height: 2.55rem;
+    padding: 0.45rem 0.55rem;
+    font-size: 0.75rem;
+  }
+
+  .admin-main-workspace .pond-map-list {
+    max-height: none;
+    display: flex;
+    gap: 0.45rem;
+    padding: 0.45rem 0.55rem 0.55rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .admin-main-workspace .pond-map-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .admin-main-workspace .pond-map-list-card {
+    min-width: 13.5rem;
+    height: 3.65rem;
+    flex: 0 0 13.5rem;
+    align-content: center;
+    gap: 0.12rem;
+    padding: 0.42rem 0.55rem;
+    border-radius: 11px;
+  }
+
+  .admin-main-workspace .pond-map-list-card-head {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .admin-main-workspace .pond-map-list-card-head strong {
+    overflow: hidden;
+    font-size: 0.78rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .admin-main-workspace .pond-map-list-card .ui-pill {
+    min-height: 1.3rem;
+    padding: 0.1rem 0.35rem;
+    font-size: 0.58rem;
+  }
+
+  .admin-main-workspace .pond-map-list-detail {
+    overflow: hidden;
+    font-size: 0.67rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .admin-main-workspace .pond-map-list-staff {
+    display: none;
+  }
+
+  .admin-main-workspace .pond-map-shell.is-list-collapsed .pond-map-filter-panel,
+  .admin-main-workspace .pond-map-shell.is-list-collapsed .pond-map-list {
+    display: none;
+  }
+
+  .admin-main-workspace .pond-map-stage {
+    min-height: 0;
+  }
+
+  .admin-main-workspace .pond-map-toolbar {
+    top: 0.55rem;
+    left: 0.55rem;
+    right: 0.55rem;
+  }
+
+  .admin-main-workspace .pond-map-layer-panel {
+    top: 3.65rem;
+    left: 0.55rem;
+    right: auto;
+    width: auto;
+    grid-template-columns: repeat(2, auto);
+    padding: 0.25rem;
+  }
+
+  .admin-main-workspace .pond-map-toggle {
+    min-height: 2rem;
+    padding: 0.3rem 0.45rem;
+  }
+
+  .admin-main-workspace .pond-map-toggle strong {
+    font-size: 0.72rem;
+  }
+
+  .admin-main-workspace .pond-map-detail-drawer {
+    left: 0.55rem;
+    right: 0.55rem;
+    bottom: 0.55rem;
+    max-height: min(55%, 18rem);
+    padding: 0.75rem;
   }
 }
 

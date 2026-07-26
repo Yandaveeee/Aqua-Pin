@@ -37,6 +37,7 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
   const [showBoundaries, setShowBoundaries] = useState(true);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [creatorFilter, setCreatorFilter] = useState("all");
+  const [listCollapsed, setListCollapsed] = useState(false);
 
   const filteredPonds = ponds.filter((pond) => {
     const normalizedSearch = searchQuery.trim().toLowerCase();
@@ -245,6 +246,14 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
     }
   }, [filteredPonds, showBoundaries, showHeatmap, mapLoaded, ponds]);
 
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    const resizeTimer = window.setTimeout(() => map.invalidateSize({ animate: false }), 220);
+    return () => window.clearTimeout(resizeTimer);
+  }, [listCollapsed]);
+
   const handlePondClick = (pond: MockPond) => {
     setSelectedPond(pond);
     const L = (window as any).L;
@@ -265,13 +274,29 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
   };
 
   return (
-    <section className="pond-map-shell" aria-label="Pond GIS visualizer">
+    <section
+      className={`pond-map-shell${listCollapsed ? " is-list-collapsed" : ""}`}
+      aria-label="Pond GIS visualizer"
+    >
       <aside className="pond-map-sidebar">
         <div className="pond-map-sidebar-head">
           <div>
             <h2>Pond list</h2>
           </div>
-          <span className="ui-pill ui-pill-ghost">{filteredPonds.length} shown</span>
+          <div className="pond-map-sidebar-actions">
+            <span className="ui-pill ui-pill-ghost">{filteredPonds.length} shown</span>
+            <button
+              aria-expanded={!listCollapsed}
+              className="pond-map-list-toggle"
+              onClick={() => setListCollapsed((current) => !current)}
+              type="button"
+            >
+              <span>{listCollapsed ? "Show" : "Hide"}</span>
+              <svg aria-hidden="true" viewBox="0 0 20 20">
+                <path d={listCollapsed ? "m5 7.5 5 5 5-5" : "m5 12.5 5-5 5 5"} />
+              </svg>
+            </button>
+          </div>
         </div>
 
         <div className="pond-map-stat-grid" aria-label="Map summary">
