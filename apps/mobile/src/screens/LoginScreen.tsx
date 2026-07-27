@@ -15,6 +15,7 @@ import {
   Keyboard,
   ScrollView,
   Image,
+  ImageBackground,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -261,8 +262,14 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.backgroundLayer} pointerEvents="none">
-        <View style={styles.orbTop} />
-        <View style={styles.orbBottom} />
+        <ImageBackground
+          source={require('../../assets/aquaculture-login-bg.png')}
+          style={styles.backgroundImageLayer}
+          imageStyle={styles.backgroundImage}
+          resizeMode="cover"
+        >
+          <View style={styles.backgroundOverlay} />
+        </ImageBackground>
       </View>
 
       <KeyboardAvoidingView
@@ -628,23 +635,15 @@ const styles = StyleSheet.create({
   backgroundLayer: {
     ...StyleSheet.absoluteFillObject,
   },
-  orbTop: {
-    position: 'absolute',
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    right: -90,
-    top: -80,
-    backgroundColor: 'rgba(30, 90, 167, 0.14)',
+  backgroundImageLayer: {
+    flex: 1,
   },
-  orbBottom: {
-    position: 'absolute',
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    left: -120,
-    bottom: -130,
-    backgroundColor: 'rgba(102, 184, 63, 0.12)',
+  backgroundImage: {
+    opacity: 0.98,
+  },
+  backgroundOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(235, 248, 249, 0.56)',
   },
   keyboardView: {
     flex: 1,
@@ -658,7 +657,7 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: 18,
     borderRadius: 28,
-    backgroundColor: 'rgba(255, 255, 255, 0.72)',
+    backgroundColor: 'rgba(255, 255, 255, 0.84)',
     borderWidth: 1,
     borderColor: 'rgba(216, 229, 241, 0.9)',
     padding: 18,
@@ -740,7 +739,7 @@ const styles = StyleSheet.create({
     color: aquapinColors.text,
   },
   formCard: {
-    backgroundColor: aquapinColors.surface,
+    backgroundColor: 'rgba(255, 255, 255, 0.96)',
     borderRadius: 28,
     padding: 20,
     borderWidth: 1,
@@ -989,6 +988,13 @@ const styles = StyleSheet.create({
   footer: {
     marginTop: 20,
     alignItems: 'center',
+    alignSelf: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(216, 229, 241, 0.9)',
   },
   footerBadge: {
     flexDirection: 'row',
