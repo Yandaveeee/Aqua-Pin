@@ -7,6 +7,28 @@ interface PondMapProps {
   ponds?: MockPond[];
 }
 
+const GONZAGA_CENTER = { lat: 18.2594, lng: 122.0054 };
+const GONZAGA_FOCUS_RADIUS_KM = 55;
+
+function distanceInKm(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number }
+) {
+  const earthRadiusKm = 6371;
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+  const latitudeDelta = toRadians(to.lat - from.lat);
+  const longitudeDelta = toRadians(to.lng - from.lng);
+  const fromLatitude = toRadians(from.lat);
+  const toLatitude = toRadians(to.lat);
+  const haversine =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(fromLatitude) *
+      Math.cos(toLatitude) *
+      Math.sin(longitudeDelta / 2) ** 2;
+
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+}
+
 function getPondTone(pond: MockPond) {
   if (!pond.isActive) return "inactive";
   if (pond.currentStockCount < 1000) return "danger";
@@ -29,6 +51,7 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const polygonsRef = useRef<any[]>([]);
+  const gonzagaFocusAppliedRef = useRef(false);
   const [ponds] = useState<MockPond[]>(initialPonds || MOCK_PONDS);
   const [selectedPond, setSelectedPond] = useState<MockPond | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -92,6 +115,35 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
       L.control.zoom({ position: "topright" }).addTo(map);
       mapInstanceRef.current = map;
       setMapLoaded(true);
+
+      if ("geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          ({ coords }) => {
+            const currentLocation = {
+              lat: coords.latitude,
+              lng: coords.longitude,
+            };
+
+            if (
+              distanceInKm(currentLocation, GONZAGA_CENTER) <=
+              GONZAGA_FOCUS_RADIUS_KM
+            ) {
+              gonzagaFocusAppliedRef.current = true;
+              map.setView([currentLocation.lat, currentLocation.lng], 14, {
+                animate: true,
+              });
+            }
+          },
+          () => {
+            // Keep the existing pond-based view when location access is unavailable.
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 300000,
+          }
+        );
+      }
     };
 
     if (!scriptTag) {
@@ -230,7 +282,7 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
       }
     });
 
-    if (filteredPonds.length > 0) {
+    if (filteredPonds.length > 0 && !gonzagaFocusAppliedRef.current) {
       const bounds = L.latLngBounds(
         filteredPonds.map((pond) => [pond.coordinates.lat, pond.coordinates.lng])
       );
