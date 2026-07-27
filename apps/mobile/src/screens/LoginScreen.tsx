@@ -183,7 +183,7 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       if (isSignUp) {
-        const { error, signedIn } = await signUp(
+        const { error } = await signUp(
           normalizedEmail,
           password,
           fullName.trim().replace(/\s+/g, ' ')
@@ -193,10 +193,10 @@ export default function LoginScreen() {
             setCooldownUntil(Date.now() + (error.retryAfterSeconds || 60) * 1000);
           }
           Alert.alert('Registration Error', error.message);
-        } else if (!signedIn) {
+        } else {
           Alert.alert(
             'Account Created',
-            'Your account was created. Open the verification email on this device; the link should return to Aquapin. If it still opens localhost, add aquapin://auth/callback to Supabase Auth Redirect URLs.',
+            'Your account is ready. Sign in using the email and password you just created.',
             [
             {
               text: 'OK',

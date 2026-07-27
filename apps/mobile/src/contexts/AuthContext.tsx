@@ -461,7 +461,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email: email.trim().toLowerCase(),
         password,
         options: {
-          emailRedirectTo: CONFIG.auth.emailRedirectUrl,
           data: {
             full_name: fullName.trim().replace(/\s+/g, ' '),
             role: 'field_staff',
@@ -475,15 +474,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (data.session) {
-        const { error: activityError } = await supabase.rpc('record_staff_session');
-        if (activityError) {
-          console.warn('Failed to record initial staff login activity:', activityError.message);
-        }
+        // Registration should always return to the login form. Keep the new
+        // account, but discard the automatic signup session locally.
+        await supabase.auth.signOut({ scope: 'local' });
+        setSession(null);
+        setUser(null);
       }
 
       // public_profiles is created by the auth.users trigger. Client inserts are blocked by RLS.
 
-      return { error: null, user: data.user, signedIn: Boolean(data.session) };
+      return { error: null, user: data.user, signedIn: false };
     } catch (err) {
       console.error('Sign up error:', err);
       return { error: { message: 'An unexpected error occurred. Please try again.' }, user: null, signedIn: false };
