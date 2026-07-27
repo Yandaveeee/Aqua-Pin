@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOutAction } from "@/app/auth-actions";
 import type { ShellData } from "@/lib/admin-data";
@@ -96,18 +97,31 @@ export default function AdminShell({ children, userEmail, shellData }: AdminShel
           <AdminSidebarNav items={navItems} />
         </div>
 
-        <div className="admin-session">
-          <p className="admin-session-label">Signed in as</p>
-          <p className="admin-session-email">{userEmail}</p>
-          <div className="admin-session-pills">
-            <span className="ui-pill ui-pill-ghost">{getEnvironmentLabel()}</span>
-            <span className="ui-pill ui-pill-info">Admin access</span>
+        <div className="admin-account">
+          <div className="admin-account-avatar" aria-hidden="true">
+            {userEmail.charAt(0).toUpperCase()}
           </div>
-          <form action={signOutAction}>
-            <button type="submit" className="danger-button">
-              Sign Out
-            </button>
-          </form>
+          <div className="admin-account-identity">
+            <strong>AquaPin Admin</strong>
+            <span title={userEmail}>{userEmail}</span>
+          </div>
+          <details className="admin-account-menu">
+            <summary aria-label="Open account menu" title="Account menu">
+              <span />
+              <span />
+              <span />
+            </summary>
+            <div className="admin-account-popover">
+              <div className="admin-account-context">
+                <span>{getEnvironmentLabel()}</span>
+                <strong>Admin access</strong>
+              </div>
+              <Link href="/admin/settings">Account settings</Link>
+              <form action={signOutAction}>
+                <button type="submit">Sign out</button>
+              </form>
+            </div>
+          </details>
         </div>
       </aside>
 

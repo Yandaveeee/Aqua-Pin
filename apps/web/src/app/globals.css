@@ -3541,30 +3541,144 @@ code {
   color: var(--brand-strong);
 }
 
-.admin-session {
+.admin-account {
   margin-top: auto;
+  position: relative;
   display: grid;
-  gap: 0.45rem;
-  padding-top: 1rem;
+  grid-template-columns: 2.35rem minmax(0, 1fr) 2rem;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.9rem 0 0;
   border-top: 1px solid rgba(255, 255, 255, 0.12);
 }
 
-.admin-session-label {
-  margin: 0;
-  opacity: 0.75;
-  font-size: 0.8rem;
+.admin-account-avatar {
+  width: 2.35rem;
+  height: 2.35rem;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(110, 231, 213, 0.16);
+  border: 1px solid rgba(138, 244, 228, 0.24);
+  color: #d9fffa;
+  font-size: 0.9rem;
+  font-weight: 800;
 }
 
-.admin-session-email {
-  margin: 0;
-  font-weight: 600;
-  font-size: 0.92rem;
+.admin-account-identity {
+  min-width: 0;
+  display: grid;
+  gap: 0.18rem;
 }
 
-.admin-session-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
+.admin-account-identity strong {
+  color: #f3fffd;
+  font-size: 0.88rem;
+}
+
+.admin-account-identity span {
+  overflow: hidden;
+  color: rgba(216, 241, 238, 0.7);
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-account-menu {
+  position: relative;
+}
+
+.admin-account-menu summary {
+  width: 2rem;
+  height: 2rem;
+  display: grid;
+  grid-template-columns: repeat(3, 3px);
+  place-content: center;
+  gap: 3px;
+  border-radius: 9px;
+  color: #d8f1ee;
+  cursor: pointer;
+  list-style: none;
+  transition: background-color 140ms ease;
+}
+
+.admin-account-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.admin-account-menu summary:hover,
+.admin-account-menu summary:focus-visible,
+.admin-account-menu[open] summary {
+  background: rgba(255, 255, 255, 0.1);
+  outline: none;
+}
+
+.admin-account-menu summary span {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.admin-account-popover {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 0.65rem);
+  z-index: 20;
+  width: 210px;
+  overflow: hidden;
+  border: 1px solid #cfe0de;
+  border-radius: 13px;
+  background: #ffffff;
+  color: #173f3c;
+  box-shadow: 0 18px 42px rgba(3, 25, 26, 0.28);
+}
+
+.admin-account-context {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.75rem 0.85rem;
+  border-bottom: 1px solid #e1ecea;
+  background: #f5faf9;
+}
+
+.admin-account-context span {
+  color: #66807d;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.admin-account-context strong {
+  font-size: 0.82rem;
+}
+
+.admin-account-popover a,
+.admin-account-popover button {
+  width: 100%;
+  display: block;
+  padding: 0.72rem 0.85rem;
+  border: 0;
+  background: transparent;
+  color: #173f3c;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-account-popover a:hover,
+.admin-account-popover a:focus-visible,
+.admin-account-popover button:hover,
+.admin-account-popover button:focus-visible {
+  background: #edf7f5;
+  outline: none;
+}
+
+.admin-account-popover button {
+  color: #b42318;
+  border-top: 1px solid #e1ecea;
 }
 
 .admin-main {
@@ -6618,8 +6732,7 @@ code {
     box-shadow: inset 3px 0 0 #6ee7d5;
   }
 
-  .admin-session {
-    gap: 0.4rem;
+  .admin-account {
     padding-top: 0.8rem;
   }
 
