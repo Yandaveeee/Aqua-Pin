@@ -17,6 +17,7 @@ function normalizeNextPath(path: string) {
 
 export default function LoginForm({ envLabel, nextPath, notice, version }: LoginFormProps) {
   const router = useRouter();
+  const demoAdminEnabled = process.env.NEXT_PUBLIC_ENABLE_MOCK_ADMIN === "true";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -32,15 +33,6 @@ export default function LoginForm({ envLabel, nextPath, notice, version }: Login
     setStatus(null);
 
     const trimmedEmail = email.trim().toLowerCase();
-    if (trimmedEmail === "admin@aquapin.com" && password === "admin123") {
-      document.cookie = "aquapin_mock_admin=true; path=/; max-age=86400; SameSite=Lax";
-      startTransition(() => {
-        router.push(normalizeNextPath(nextPath));
-        router.refresh();
-      });
-      return;
-    }
-
     const supabase = createSupabaseBrowserClient();
 
     const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -49,11 +41,25 @@ export default function LoginForm({ envLabel, nextPath, notice, version }: Login
     });
 
     if (signInError) {
+      if (
+        demoAdminEnabled &&
+        trimmedEmail === "admin@aquapin.com" &&
+        password === "admin123"
+      ) {
+        document.cookie = "aquapin_mock_admin=true; path=/; max-age=86400; SameSite=Lax";
+        startTransition(() => {
+          router.push(normalizeNextPath(nextPath));
+          router.refresh();
+        });
+        return;
+      }
+
       setError(signInError.message);
       setSubmitting(false);
       return;
     }
 
+    document.cookie = "aquapin_mock_admin=; path=/; max-age=0; SameSite=Lax";
     startTransition(() => {
       router.push(normalizeNextPath(nextPath));
       router.refresh();
