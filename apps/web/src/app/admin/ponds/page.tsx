@@ -5,6 +5,35 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const revalidate = 0;
 
+function calculateBoundaryAreaSqm(
+  boundary: NonNullable<MockPond["boundary"]>
+) {
+  if (boundary.length < 3) return 0;
+
+  const earthRadiusM = 6371008.8;
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+  const referenceLatitude =
+    boundary.reduce((sum, point) => sum + point.lat, 0) / boundary.length;
+  const referenceLatitudeRadians = toRadians(referenceLatitude);
+  const projected = boundary.map((point) => ({
+    x:
+      earthRadiusM *
+      toRadians(point.lng) *
+      Math.cos(referenceLatitudeRadians),
+    y: earthRadiusM * toRadians(point.lat),
+  }));
+
+  let area = 0;
+  for (let index = 0; index < projected.length; index += 1) {
+    const nextIndex = (index + 1) % projected.length;
+    area +=
+      projected[index].x * projected[nextIndex].y -
+      projected[nextIndex].x * projected[index].y;
+  }
+
+  return Math.abs(area) * 0.5;
+}
+
 function mapPond(row: any, creatorName?: string): MockPond {
   let lat = 14.5995;
   let lng = 120.9842;
@@ -68,7 +97,7 @@ function mapPond(row: any, creatorName?: string): MockPond {
     isActive: row.is_active ?? false,
     currentSpecies: row.current_species,
     currentStockCount: row.current_stock_count ?? 0,
-    areaSqm: boundary ? Math.max(1000, boundary.length * 2500) : 10000,
+    areaSqm: boundary ? Math.round(calculateBoundaryAreaSqm(boundary)) : 0,
   };
 }
 

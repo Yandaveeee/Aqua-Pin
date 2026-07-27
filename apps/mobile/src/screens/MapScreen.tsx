@@ -58,34 +58,43 @@ const MAP_TYPES: { label: string; value: MapType }[] = [
   { label: 'Terrain', value: 'terrain' },
 ];
 
-// Calculate polygon area using shoelace formula
+// Project a small GPS polygon to local meters, then apply the shoelace formula.
+// This is suitable for pond-sized boundaries and accounts for longitude scale
+// changing with latitude.
 function calculatePolygonArea(coordinates: Coordinate[]): number {
   if (coordinates.length < 3) return 0;
 
+  const earthRadiusM = 6371008.8;
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+  const referenceLatitude =
+    coordinates.reduce((sum, point) => sum + point.latitude, 0) /
+    coordinates.length;
+  const referenceLatitudeRadians = toRadians(referenceLatitude);
+  const projected = coordinates.map((point) => ({
+    x:
+      earthRadiusM *
+      toRadians(point.longitude) *
+      Math.cos(referenceLatitudeRadians),
+    y: earthRadiusM * toRadians(point.latitude),
+  }));
+
   let area = 0;
-  const n = coordinates.length;
+  const n = projected.length;
 
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n;
-    area += coordinates[i].longitude * coordinates[j].latitude;
-    area -= coordinates[j].longitude * coordinates[i].latitude;
+    area += projected[i].x * projected[j].y;
+    area -= projected[j].x * projected[i].y;
   }
 
-  area = Math.abs(area) * 0.5;
-  // Convert to square meters (approximate for small areas)
-  return area * 111320 * 111320;
+  return Math.abs(area) * 0.5;
 }
 
 function formatArea(areaSqM: number): string {
-  if (areaSqM < 10000) {
-    return `${Math.round(areaSqM)} m²`;
-  }
-  const hectares = areaSqM / 10000;
-  if (hectares < 100) {
-    return `${hectares.toFixed(2)} ha`;
-  }
-  const sqKm = areaSqM / 1000000;
-  return `${sqKm.toFixed(2)} km²`;
+  const squareMeters = `${Math.round(areaSqM).toLocaleString('en-PH')} m²`;
+  return areaSqM >= 10000
+    ? `${squareMeters} (${(areaSqM / 10000).toFixed(2)} ha)`
+    : squareMeters;
 }
 
 function parseLocation(location: string): Coordinate | null {
@@ -701,7 +710,7 @@ export default function MapScreen() {
         {polygonPoints.length >= 3 && (
           <View style={styles.areaBadge}>
             <Text style={styles.areaText}>
-              Area: {formatArea(calculatePolygonArea(polygonPoints))}
+              Measured area: {formatArea(calculatePolygonArea(polygonPoints))}
             </Text>
           </View>
         )}
