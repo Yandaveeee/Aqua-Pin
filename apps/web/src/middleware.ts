@@ -22,7 +22,10 @@ export async function middleware(request: NextRequest) {
     request,
   });
 
-  if (request.cookies.get("aquapin_mock_admin")?.value === "true") {
+  if (
+    process.env.NEXT_PUBLIC_ENABLE_MOCK_ADMIN === "true" &&
+    request.cookies.get("aquapin_mock_admin")?.value === "true"
+  ) {
     return response;
   }
 

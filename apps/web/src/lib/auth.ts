@@ -11,7 +11,9 @@ export async function getCurrentUserAndProfile(): Promise<{
 }> {
   const { cookies } = await import("next/headers");
   const cookieStore = await cookies();
-  const isMock = cookieStore.get("aquapin_mock_admin")?.value === "true";
+  const isMock =
+    process.env.NEXT_PUBLIC_ENABLE_MOCK_ADMIN === "true" &&
+    cookieStore.get("aquapin_mock_admin")?.value === "true";
 
   if (isMock) {
     return {

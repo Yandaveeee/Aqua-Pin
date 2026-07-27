@@ -75,7 +75,9 @@ function mapPond(row: any, creatorName?: string): MockPond {
 export default async function AdminPondsPage() {
   await requireApprovedAdmin();
   const { cookies } = await import("next/headers");
-  const isMock = (await cookies()).get("aquapin_mock_admin")?.value === "true";
+  const isMock =
+    process.env.NEXT_PUBLIC_ENABLE_MOCK_ADMIN === "true" &&
+    (await cookies()).get("aquapin_mock_admin")?.value === "true";
   let ponds: MockPond[] | undefined;
 
   if (isMock) {
