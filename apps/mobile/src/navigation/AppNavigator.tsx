@@ -20,6 +20,7 @@ import DataEntryScreen from '../screens/DataEntryScreen';
 import SyncScreen from '../screens/SyncScreen';
 import ReportScreen from '../screens/ReportScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import PondAlertNotifications from '../components/PondAlertNotifications';
 
 // Enhanced tab icon component
 const TabIcon = ({
@@ -206,6 +207,7 @@ export default function AppNavigator() {
 
   return (
     <NavigationContainer theme={navigationTheme}>
+      {user ? <PondAlertNotifications /> : null}
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
           <Stack.Screen name="Main" component={MainTabs} />

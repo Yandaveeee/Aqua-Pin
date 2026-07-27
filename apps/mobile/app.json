@@ -44,6 +44,14 @@
           "locationAlwaysAndWhenInUsePermission": "Allow AquaPin to use your location to show ponds on the map."
         }
       ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#0F766E",
+          "defaultChannel": "pond-alerts"
+        }
+      ],
       "expo-asset"
     ],
     "extra": {
