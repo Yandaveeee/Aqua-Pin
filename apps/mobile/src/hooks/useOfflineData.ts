@@ -368,7 +368,7 @@ export function useCreatePond() {
         }
       );
 
-      await triggerImmediateSyncIfOnline('Create pond');
+      void triggerImmediateSyncIfOnline('Create pond');
 
       return createdPond;
     } catch (error) {
@@ -436,7 +436,7 @@ export function useCreateMortalityLog() {
         createdAt: createdAtTs,
       }, data.pondId);
 
-      await triggerImmediateSyncIfOnline('Mortality report');
+      void triggerImmediateSyncIfOnline('Mortality report');
 
       return created;
     } catch (error) {
@@ -526,7 +526,7 @@ export function useCreateHarvest() {
         createdAt: createdAtTs,
       }, data.pondId);
 
-      await triggerImmediateSyncIfOnline('Harvest');
+      void triggerImmediateSyncIfOnline('Harvest');
 
       return created;
     } catch (error) {
@@ -615,7 +615,7 @@ export function useCreateStockingLog() {
         createdAt: createdAtTs,
       }, data.pondId);
 
-      await triggerImmediateSyncIfOnline('Stocking');
+      void triggerImmediateSyncIfOnline('Stocking');
 
       return created;
     } catch (error) {
@@ -676,7 +676,7 @@ export function useCreatePondHistoryEvent() {
         createdAt: createdAtTs,
       }, data.pondId);
 
-      await triggerImmediateSyncIfOnline(`Pond ${data.eventType}`);
+      void triggerImmediateSyncIfOnline(`Pond ${data.eventType}`);
 
       return created;
     } catch (error) {
