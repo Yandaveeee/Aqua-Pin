@@ -961,6 +961,12 @@ async function processSingleQueueItem(
         throw error
       }
 
+      // RLS can hide the target row without returning a database error.
+      // Keep the operation retryable instead of discarding an unsaved update.
+      if (!data?.id) {
+        throw new Error(`Cannot update ${processingItem.entity}: row missing or update permission denied`)
+      }
+
       responseData = data
     } else {
       const useUpsert = Boolean(preferredId)

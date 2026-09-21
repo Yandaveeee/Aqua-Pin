@@ -569,6 +569,14 @@ TO authenticated
 USING (public.is_admin())
 WITH CHECK (public.is_admin());
 
+DROP POLICY IF EXISTS "Approved staff can update own ponds" ON public.ponds;
+CREATE POLICY "Approved staff can update own ponds"
+ON public.ponds
+FOR UPDATE
+TO authenticated
+USING (public.is_approved_staff() AND created_by = auth.uid())
+WITH CHECK (public.is_approved_staff() AND created_by = auth.uid());
+
 CREATE POLICY "Admins can delete ponds"
 ON public.ponds
 FOR DELETE
