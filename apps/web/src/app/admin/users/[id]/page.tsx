@@ -24,10 +24,7 @@ const ENRICHED_PROFILE_FIELDS =
   "id, email, full_name, role, status, last_login_at, latest_latitude, latest_longitude, location_accuracy_m, location_label, municipality, barangay, region, location_updated_at, created_at, updated_at";
 
 function fallbackName(email: string) {
-  return email
-    .split("@")[0]
-    .replace(/[._-]+/g, " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+  return email;
 }
 
 function parsePondLocation(value: unknown) {
@@ -167,16 +164,23 @@ export default async function AdminUserDetailPage({ params }: AdminUserDetailPag
 
     if (enrichedResult.error) {
       console.warn("Enriched staff profile fields are unavailable; using legacy profile data:", enrichedResult.error.message);
-      const legacyResult = await supabase
+      let legacyResult: { data: Partial<PublicProfile> | null; error: { message: string } | null } = await supabase
         .from("public_profiles")
-        .select("id, email, role, status, created_at, updated_at")
+        .select("id, email, full_name, role, status, created_at, updated_at")
         .eq("id", id)
         .maybeSingle();
+      if (legacyResult.error) {
+        const basicResult = await supabase.from("public_profiles")
+          .select("id, email, role, status, created_at, updated_at")
+          .eq("id", id)
+          .maybeSingle();
+        legacyResult = { ...basicResult, data: basicResult.data ? { ...(basicResult.data as Partial<PublicProfile>), full_name: null } : null };
+      }
       if (legacyResult.data) {
         const legacy = legacyResult.data as any;
         profile = {
           ...legacy,
-          full_name: fallbackName(legacy.email),
+          full_name: legacy.full_name?.trim() || fallbackName(legacy.email),
           last_login_at: null,
           latest_latitude: null,
           latest_longitude: null,

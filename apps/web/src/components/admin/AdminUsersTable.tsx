@@ -62,7 +62,6 @@ export default function AdminUsersTable({ users }: { users: AdminUserListItem[] 
                   </span>
                   <span>
                     <strong>{user.fullName}</strong>
-                    <span>{user.email}</span>
                   </span>
                 </span>
               </td>

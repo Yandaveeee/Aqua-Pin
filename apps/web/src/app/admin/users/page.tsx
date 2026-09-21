@@ -15,10 +15,7 @@ const ENRICHED_PROFILE_FIELDS =
   "id, email, full_name, role, status, last_login_at, latest_latitude, latest_longitude, location_accuracy_m, location_label, municipality, barangay, region, location_updated_at, created_at, updated_at";
 
 function fallbackName(email: string) {
-  return email
-    .split("@")[0]
-    .replace(/[._-]+/g, " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+  return email;
 }
 
 function mockProfile(input: {
@@ -88,13 +85,21 @@ export default async function AdminUsersPage({ searchParams }: UsersPageProps) {
       console.warn("Enriched staff profile fields are unavailable; using legacy profile data:", error.message);
       let legacyQuery = supabase
         .from("public_profiles")
-        .select("id, email, role, status, created_at, updated_at")
+        .select("id, email, full_name, role, status, created_at, updated_at")
         .order("created_at", { ascending: false });
-      if (query) legacyQuery = legacyQuery.ilike("email", `%${query}%`);
-      const legacyResult = await legacyQuery;
+      if (query) legacyQuery = legacyQuery.or(`email.ilike.%${query}%,full_name.ilike.%${query}%`);
+      let legacyResult: { data: Partial<PublicProfile>[] | null; error: { message: string } | null } = await legacyQuery;
+      if (legacyResult.error) {
+        let basicQuery = supabase.from("public_profiles")
+          .select("id, email, role, status, created_at, updated_at")
+          .order("created_at", { ascending: false });
+        if (query) basicQuery = basicQuery.ilike("email", `%${query}%`);
+        const basicResult = await basicQuery;
+        legacyResult = { ...basicResult, data: (basicResult.data as Partial<PublicProfile>[] | null)?.map((profile) => ({ ...profile, full_name: null })) ?? null };
+      }
       data = (legacyResult.data ?? []).map((profile: any) => ({
         ...profile,
-        full_name: fallbackName(profile.email),
+        full_name: profile.full_name?.trim() || fallbackName(profile.email),
         last_login_at: null,
         latest_latitude: null,
         latest_longitude: null,
