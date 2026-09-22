@@ -1,10 +1,12 @@
+import { cache } from "react";
 import { createServerClient } from "@supabase/ssr";
 import type { SetAllCookies } from "@supabase/ssr";
 import type { Database } from "@aquapin/shared";
 import { cookies } from "next/headers";
 import { getSupabaseEnv } from "@/lib/supabase/env";
 
-export async function createSupabaseServerClient() {
+// Share one client within a server render; never cache across users or requests.
+export const createSupabaseServerClient = cache(async function createSupabaseServerClient() {
   const { url, anonKey } = getSupabaseEnv();
   const cookieStore = await cookies();
 
@@ -24,4 +26,4 @@ export async function createSupabaseServerClient() {
       },
     },
   });
-}
+});

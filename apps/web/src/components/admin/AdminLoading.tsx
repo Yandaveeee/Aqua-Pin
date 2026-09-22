@@ -228,3 +228,13 @@ export function AdminSettingsLoading() {
     </section>
   );
 }
+
+export function AdminFeatureLoading({ label }: { label: string }) {
+  return (
+    <section className="stack" role="status" aria-busy="true" aria-label={`Loading ${label}`}>
+      <p className="muted">Loading {label}…</p>
+      <SkeletonHeader />
+      <SkeletonPanel lines={1} withRows={5} />
+    </section>
+  );
+}

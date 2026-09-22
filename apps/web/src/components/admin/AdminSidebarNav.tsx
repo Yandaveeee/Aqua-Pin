@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 export type AdminNavItem = {
   href: string;
@@ -23,6 +23,7 @@ function isActivePath(pathname: string, href: string) {
 
 export default function AdminSidebarNav({ items }: AdminSidebarNavProps) {
   const pathname = usePathname();
+  const router = useRouter();
 
   return (
     <nav className="admin-nav" aria-label="Admin navigation">
@@ -34,6 +35,9 @@ export default function AdminSidebarNav({ items }: AdminSidebarNavProps) {
             className={`admin-nav-link ${active ? "is-active" : ""}`}
             key={item.href}
             href={item.href}
+            aria-current={active ? "page" : undefined}
+            onMouseEnter={() => { if (!active) router.prefetch(item.href); }}
+            onFocus={() => { if (!active) router.prefetch(item.href); }}
           >
             <span>{item.label}</span>
             {item.badge && item.badge > 0 ? (

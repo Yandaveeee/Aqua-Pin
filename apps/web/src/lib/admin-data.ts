@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { Json } from "@aquapin/shared";
 import type { Database } from "@aquapin/shared";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -225,7 +226,7 @@ async function countEventsBetween(supabase: SupabaseClient, sinceIso: string, un
   return counts.reduce((sum, value) => sum + value, 0);
 }
 
-async function getSettingsSnapshot(supabase: SupabaseClient) {
+const getSettingsSnapshot = cache(async function getSettingsSnapshot(supabase: SupabaseClient) {
   const { data, error } = await supabase
     .from("admin_settings")
     .select("section, value")
@@ -243,9 +244,9 @@ async function getSettingsSnapshot(supabase: SupabaseClient) {
     operations: normalizeAdminSettingSection("operations", rowMap.get("operations")),
     notifications: normalizeAdminSettingSection("notifications", rowMap.get("notifications")),
   };
-}
+});
 
-async function getStalePonds(supabase: SupabaseClient, staleSyncMinutes: number) {
+const getStalePonds = cache(async function getStalePonds(supabase: SupabaseClient, staleSyncMinutes: number) {
   const sinceIso = new Date(Date.now() - staleSyncMinutes * 60 * 1000).toISOString();
   const [{ data: activePondsData, error: activePondsError }, { data: recentHistoryData, error: recentHistoryError }] =
     await Promise.all([
@@ -270,7 +271,7 @@ async function getStalePonds(supabase: SupabaseClient, staleSyncMinutes: number)
   const recentPondIds = new Set(recentHistoryRows.map((row) => row.pond_id));
 
   return activePonds.filter((pond) => !recentPondIds.has(pond.id));
-}
+});
 
 export async function getAdminShellData(): Promise<ShellData> {
   const { cookies } = await import("next/headers");
@@ -464,16 +465,7 @@ export async function getDashboardOverview(days: number): Promise<DashboardOverv
   const previous24h = new Date(now - 48 * 60 * 60 * 1000).toISOString();
   const feedSince = new Date(now - days * 24 * 60 * 60 * 1000).toISOString();
 
-  const [
-    settingsSnapshot,
-    totalStaff,
-    totalPonds,
-    activePonds,
-    events24h,
-    eventsPrevious24h,
-    settingsChanges24h,
-  ] = await Promise.all([
-    getSettingsSnapshot(supabase),
+  const metricsPromise = Promise.all([
     countRows(supabase, "public_profiles", (query) => query.eq("role", "field_staff")),
     countRows(supabase, "ponds"),
     countRows(supabase, "ponds", (query) => query.eq("is_active", true)),
@@ -481,6 +473,8 @@ export async function getDashboardOverview(days: number): Promise<DashboardOverv
     countEventsBetween(supabase, previous24h, since24h),
     countRows(supabase, "admin_settings_audit", (query) => query.gte("changed_at", since24h)),
   ]);
+
+  const settingsSnapshot = await getSettingsSnapshot(supabase);
 
   const lowStockThreshold = settingsSnapshot.operations.lowStockThreshold;
   const staleSyncMinutes = settingsSnapshot.notifications.staleSyncMinutes;
@@ -524,19 +518,19 @@ export async function getDashboardOverview(days: number): Promise<DashboardOverv
   const pondIds = new Set(recentEvents.map((event) => event.pond_id));
   const actorIds = new Set(recentEvents.map((event) => event.recorded_by));
 
-  const pondLabelRows = (
+  const [pondLabelsResult, actorLabelsResult] = await Promise.all([
     pondIds.size > 0
-      ? ((await supabase.from("ponds").select("id, name").in("id", Array.from(pondIds))).data ?? [])
-      : []
-  ) as Array<{ id: string; name: string }>;
-  const actorLabelRows = (
+      ? supabase.from("ponds").select("id, name").in("id", Array.from(pondIds))
+      : Promise.resolve({ data: [] }),
     actorIds.size > 0
-      ? ((await supabase
-          .from("public_profiles")
-          .select("id, email")
-          .in("id", Array.from(actorIds))).data ?? [])
-      : []
-  ) as ProfileLabelRow[];
+      ? supabase.from("public_profiles").select("id, email").in("id", Array.from(actorIds))
+      : Promise.resolve({ data: [] }),
+  ]);
+  const pondLabelRows = (pondLabelsResult.data ?? []) as Array<{ id: string; name: string }>;
+  const actorLabelRows = (actorLabelsResult.data ?? []) as ProfileLabelRow[];
+
+  const [totalStaff, totalPonds, activePonds, events24h, eventsPrevious24h, settingsChanges24h] =
+    await metricsPromise;
 
   const pondMap = new Map(pondLabelRows.map((row) => [row.id, row.name]));
   const actorMap = new Map(actorLabelRows.map((row) => [row.id, row.email]));
