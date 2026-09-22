@@ -29,7 +29,6 @@ export default function AdminShell({ children, userEmail, shellData }: AdminShel
       label: "Overview",
       items: [
         { href: "/admin", label: "Dashboard", badge: shellData.navBadges.dashboard },
-        { href: "/admin/analytics", label: "Analytics" },
       ],
     },
     {
@@ -43,7 +42,6 @@ export default function AdminShell({ children, userEmail, shellData }: AdminShel
       label: "Team",
       items: [
         { href: "/admin/users", label: "Users" },
-        { href: "/admin/approvals", label: "Approvals", badge: shellData.navBadges.approvals },
       ],
     },
     {
