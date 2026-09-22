@@ -37,7 +37,6 @@ export default function AdminShell({ children, userEmail, shellData }: AdminShel
       items: [
         { href: "/admin/ponds", label: "Pond map" },
         { href: "/admin/records", label: "Records" },
-        { href: "/admin/feed", label: "Feed inventory" },
       ],
     },
     {
@@ -50,7 +49,6 @@ export default function AdminShell({ children, userEmail, shellData }: AdminShel
     {
       label: "System",
       items: [
-        { href: "/admin/verification", label: "Verification" },
         { href: "/admin/settings", label: "Settings", badge: shellData.navBadges.settings },
       ],
     },
