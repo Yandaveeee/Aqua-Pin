@@ -24,12 +24,36 @@ function getEnvironmentLabel() {
 export default function AdminShell({ children, userEmail, shellData }: AdminShellProps) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const navItems = [
-    { href: "/admin", label: "Dashboard", badge: shellData.navBadges.dashboard },
-    { href: "/admin/ponds", label: "Ponds" },
-    { href: "/admin/users", label: "Users" },
-    { href: "/admin/records", label: "Records" },
-    { href: "/admin/settings", label: "Settings", badge: shellData.navBadges.settings },
+  const navGroups = [
+    {
+      label: "Overview",
+      items: [
+        { href: "/admin", label: "Dashboard", badge: shellData.navBadges.dashboard },
+        { href: "/admin/analytics", label: "Analytics" },
+      ],
+    },
+    {
+      label: "Operations",
+      items: [
+        { href: "/admin/ponds", label: "Pond map" },
+        { href: "/admin/records", label: "Records" },
+        { href: "/admin/feed", label: "Feed inventory" },
+      ],
+    },
+    {
+      label: "Team",
+      items: [
+        { href: "/admin/users", label: "Users" },
+        { href: "/admin/approvals", label: "Approvals", badge: shellData.navBadges.approvals },
+      ],
+    },
+    {
+      label: "System",
+      items: [
+        { href: "/admin/verification", label: "Verification" },
+        { href: "/admin/settings", label: "Settings", badge: shellData.navBadges.settings },
+      ],
+    },
   ];
 
 
@@ -93,8 +117,7 @@ export default function AdminShell({ children, userEmail, shellData }: AdminShel
         </div>
 
         <div className="admin-sidebar-navigation">
-          <p className="admin-nav-label">Workspace</p>
-          <AdminSidebarNav items={navItems} />
+          <AdminSidebarNav groups={navGroups} />
         </div>
 
         <div className="admin-account">

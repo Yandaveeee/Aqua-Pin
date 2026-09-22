@@ -104,22 +104,27 @@ export default async function AdminDashboardPage() {
         ))}
       </div>
 
-      {alerts.length > 0 ? (
-        <section className="dashboard-alert-strip" id="dashboard-alerts" aria-label="Attention needed">
-          <div className="dashboard-alert-strip-title">
-            <span className="ui-pill ui-pill-danger">{alerts.length}</span>
-            <strong>Attention needed</strong>
+      <section className="dashboard-task-panel" id="dashboard-alerts" aria-label="Operational priorities">
+        <div className="dashboard-task-panel-head">
+          <div>
+            <p className="eyebrow">Operational priorities</p>
+            <h2>{alerts.length > 0 ? `${alerts.length} items need attention` : "No urgent blockers"}</h2>
           </div>
-          <div className="dashboard-alert-strip-items">
-            {alerts.map((alert) => (
-              <Link href={alert.href} key={alert.id}>
-                <span>{alert.title}</span>
-                <strong>View</strong>
-              </Link>
-            ))}
-          </div>
-        </section>
-      ) : null}
+          <span>Data updated {formatRelativeTime(overview.updatedAt)}</span>
+        </div>
+        <div className="dashboard-task-list">
+          {overview.attentionItems.map((item) => (
+            <Link className={`dashboard-task-item is-${item.tone}`} href={item.href} key={item.id}>
+              <span className="dashboard-task-indicator" aria-hidden="true" />
+              <span>
+                <strong>{item.title}</strong>
+                <small>{item.description}</small>
+              </span>
+              <b>{item.actionLabel}</b>
+            </Link>
+          ))}
+        </div>
+      </section>
 
       <div className="dashboard-overview-grid">
         <section className="dashboard-overview-panel">

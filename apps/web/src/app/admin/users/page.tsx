@@ -1,12 +1,11 @@
 import Link from "next/link";
 import type { Database } from "@aquapin/shared";
-import AdminPageHeader from "@/components/admin/AdminPageHeader";
 import AdminUsersTable, { type AdminUserListItem } from "@/components/admin/AdminUsersTable";
 import { requireApprovedAdmin } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type UsersPageProps = {
-  searchParams?: Promise<{ q?: string }>;
+  searchParams?: Promise<{ q?: string; role?: string; status?: string; location?: string; page?: string }>;
 };
 
 type PublicProfile = Database["public"]["Tables"]["public_profiles"]["Row"];
@@ -59,7 +58,12 @@ function safeSearch(value: string | undefined) {
 
 export default async function AdminUsersPage({ searchParams }: UsersPageProps) {
   await requireApprovedAdmin();
-  const query = safeSearch((await searchParams)?.q);
+  const params = await searchParams;
+  const query = safeSearch(params?.q);
+  const role = params?.role === "admin" || params?.role === "field_staff" ? params.role : "all";
+  const status = params?.status === "pending" || params?.status === "approved" ? params.status : "all";
+  const location = params?.location === "reported" || params?.location === "missing" ? params.location : "all";
+  const requestedPage = Math.max(1, Number.parseInt(params?.page ?? "1", 10) || 1);
   const { cookies } = await import("next/headers");
   const isMock = (await cookies()).get("aquapin_mock_admin")?.value === "true";
   let users: PublicProfile[] = [];
@@ -79,6 +83,8 @@ export default async function AdminUsersPage({ searchParams }: UsersPageProps) {
       .select(ENRICHED_PROFILE_FIELDS)
       .order("created_at", { ascending: false });
     if (query) usersQuery = usersQuery.or(`email.ilike.%${query}%,full_name.ilike.%${query}%`);
+    if (role !== "all") usersQuery = usersQuery.eq("role", role);
+    if (status !== "all") usersQuery = usersQuery.eq("status", status);
     let { data, error } = await usersQuery;
 
     if (error) {
@@ -88,12 +94,16 @@ export default async function AdminUsersPage({ searchParams }: UsersPageProps) {
         .select("id, email, full_name, role, status, created_at, updated_at")
         .order("created_at", { ascending: false });
       if (query) legacyQuery = legacyQuery.or(`email.ilike.%${query}%,full_name.ilike.%${query}%`);
+      if (role !== "all") legacyQuery = legacyQuery.eq("role", role);
+      if (status !== "all") legacyQuery = legacyQuery.eq("status", status);
       let legacyResult: { data: Partial<PublicProfile>[] | null; error: { message: string } | null } = await legacyQuery;
       if (legacyResult.error) {
         let basicQuery = supabase.from("public_profiles")
           .select("id, email, role, status, created_at, updated_at")
           .order("created_at", { ascending: false });
         if (query) basicQuery = basicQuery.ilike("email", `%${query}%`);
+        if (role !== "all") basicQuery = basicQuery.eq("role", role);
+        if (status !== "all") basicQuery = basicQuery.eq("status", status);
         const basicResult = await basicQuery;
         legacyResult = { ...basicResult, data: (basicResult.data as Partial<PublicProfile>[] | null)?.map((profile) => ({ ...profile, full_name: null })) ?? null };
       }
@@ -117,17 +127,19 @@ export default async function AdminUsersPage({ searchParams }: UsersPageProps) {
     users = (data ?? []) as unknown as PublicProfile[];
   }
 
-  if (isMock && query) {
-    const normalizedQuery = query.toLowerCase();
-    users = users.filter(
-      (user) =>
-        user.email.toLowerCase().includes(normalizedQuery) ||
-        user.full_name?.toLowerCase().includes(normalizedQuery)
-    );
-  }
+  const normalizedQuery = query.toLowerCase();
+  users = users.filter((user) =>
+    (!query || user.email.toLowerCase().includes(normalizedQuery) || user.full_name?.toLowerCase().includes(normalizedQuery)) &&
+    (role === "all" || user.role === role) &&
+    (status === "all" || user.status === status) &&
+    (location === "all" || (location === "reported" ? user.latest_latitude != null : user.latest_latitude == null))
+  );
   const fieldStaffCount = users.filter((user) => user.role === "field_staff").length;
   const adminCount = users.filter((user) => user.role === "admin").length;
-  const userItems: AdminUserListItem[] = users.map((user) => ({
+  const pendingCount = users.filter((user) => user.status === "pending").length;
+  const pageCount = Math.max(1, Math.ceil(users.length / 25));
+  const page = Math.min(requestedPage, pageCount);
+  const userItems: AdminUserListItem[] = users.slice((page - 1) * 25, page * 25).map((user) => ({
     id: user.id,
     fullName: user.full_name?.trim() || fallbackName(user.email),
     email: user.email,
@@ -141,31 +153,29 @@ export default async function AdminUsersPage({ searchParams }: UsersPageProps) {
 
   return (
     <section className="stack staff-users-page">
-      <AdminPageHeader
-        eyebrow="Account Directory"
-        title="Users"
-        description="View the administrators and field staff who use AquaPin. New field staff are active by default—there is no approval queue."
-        actions={<Link className="secondary-button" href="/admin/records">View records</Link>}
-      />
-
       <div className="card-grid three-col">
         <article className="metric-card"><p className="metric-label">All users</p><p className="metric-value">{users.length}</p><p className="metric-detail">Accounts visible in AquaPin</p></article>
         <article className="metric-card"><p className="metric-label">Field staff</p><p className="metric-value">{fieldStaffCount}</p><p className="metric-detail">Mobile field-operation accounts</p></article>
         <article className="metric-card"><p className="metric-label">Administrators</p><p className="metric-value">{adminCount}</p><p className="metric-detail">Web console access</p></article>
       </div>
 
+      {pendingCount > 0 ? <div className="users-approval-callout"><div><strong>{pendingCount} account request{pendingCount === 1 ? "" : "s"} need review</strong><span>Approve access before staff can use protected operations.</span></div><Link className="primary-button" href="/admin/approvals">Review approvals</Link></div> : null}
+
       <article className="panel">
-        <form className="inline-form filter-form" method="GET">
+        <form className="users-filter-form" method="GET">
           <div className="filter-field">
             <label className="field-label" htmlFor="q">Search users</label>
-            <input className="field-input" defaultValue={query} id="q" name="q" placeholder="Name or email address" />
+            <input className="field-input" defaultValue={query} id="q" name="q" type="search" placeholder="Name or email address" />
           </div>
-          <button className="secondary-button" type="submit">Search</button>
-          {query ? <Link className="secondary-button" href="/admin/users">Clear</Link> : null}
+          <label className="filter-field"><span className="field-label">Role</span><select className="field-input" name="role" defaultValue={role}><option value="all">All roles</option><option value="field_staff">Field staff</option><option value="admin">Administrators</option></select></label>
+          <label className="filter-field"><span className="field-label">Status</span><select className="field-input" name="status" defaultValue={status}><option value="all">All statuses</option><option value="approved">Active</option><option value="pending">Pending</option></select></label>
+          <label className="filter-field"><span className="field-label">Location</span><select className="field-input" name="location" defaultValue={location}><option value="all">Any location</option><option value="reported">Reported</option><option value="missing">Not reported</option></select></label>
+          <div className="users-filter-actions"><button className="primary-button" type="submit">Apply filters</button><Link className="secondary-button" href="/admin/users">Clear</Link></div>
         </form>
 
         {users.length > 0 ? <AdminUsersTable users={userItems} /> : null}
         {users.length === 0 ? <div className="empty-panel"><p>No users found.</p></div> : null}
+        {pageCount > 1 ? <nav className="pager" aria-label="Users pagination"><Link className={`secondary-button ${page === 1 ? "is-disabled" : ""}`} aria-disabled={page === 1} href={`?${new URLSearchParams({ ...(query ? { q: query } : {}), ...(role !== "all" ? { role } : {}), ...(status !== "all" ? { status } : {}), ...(location !== "all" ? { location } : {}), page: String(Math.max(1, page - 1)) })}`}>Previous</Link><span>Page {page} of {pageCount}</span><Link className={`secondary-button ${page === pageCount ? "is-disabled" : ""}`} aria-disabled={page === pageCount} href={`?${new URLSearchParams({ ...(query ? { q: query } : {}), ...(role !== "all" ? { role } : {}), ...(status !== "all" ? { status } : {}), ...(location !== "all" ? { location } : {}), page: String(Math.min(pageCount, page + 1)) })}`}>Next</Link></nav> : null}
       </article>
     </section>
   );

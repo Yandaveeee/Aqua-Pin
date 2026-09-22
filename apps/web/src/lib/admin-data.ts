@@ -28,6 +28,7 @@ export type ShellData = {
   attentionCount: number;
   navBadges: {
     dashboard: number;
+    approvals: number;
     settings: number;
   };
 };
@@ -284,17 +285,19 @@ export async function getAdminShellData(): Promise<ShellData> {
       attentionCount: 1,
       navBadges: {
         dashboard: 1,
+        approvals: 0,
         settings: 2,
       },
     };
   }
 
   const supabase = await createSupabaseServerClient();
-  const [settingsSnapshot, settingsChanges24h] = await Promise.all([
+  const [settingsSnapshot, settingsChanges24h, pendingApprovals] = await Promise.all([
     getSettingsSnapshot(supabase),
     countRows(supabase, "admin_settings_audit", (query) =>
       query.gte("changed_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
     ),
+    countRows(supabase, "public_profiles", (query) => query.eq("status", "pending")),
   ]);
 
   const lowStockThreshold = settingsSnapshot.operations.lowStockThreshold;
@@ -316,6 +319,7 @@ export async function getAdminShellData(): Promise<ShellData> {
     attentionCount,
     navBadges: {
       dashboard: attentionCount,
+      approvals: pendingApprovals,
       settings: settingsChanges24h,
     },
   };

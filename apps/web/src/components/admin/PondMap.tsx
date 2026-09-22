@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { MOCK_PONDS, MockPond } from "@/lib/mock-data";
 
 interface PondMapProps {
@@ -10,10 +11,7 @@ interface PondMapProps {
 const GONZAGA_CENTER = { lat: 18.2594, lng: 122.0054 };
 const GONZAGA_FOCUS_RADIUS_KM = 55;
 
-function distanceInKm(
-  from: { lat: number; lng: number },
-  to: { lat: number; lng: number }
-) {
+function distanceInKm(from: { lat: number; lng: number }, to: { lat: number; lng: number }) {
   const earthRadiusKm = 6371;
   const toRadians = (value: number) => (value * Math.PI) / 180;
   const latitudeDelta = toRadians(to.lat - from.lat);
@@ -22,9 +20,7 @@ function distanceInKm(
   const toLatitude = toRadians(to.lat);
   const haversine =
     Math.sin(latitudeDelta / 2) ** 2 +
-    Math.cos(fromLatitude) *
-      Math.cos(toLatitude) *
-      Math.sin(longitudeDelta / 2) ** 2;
+    Math.cos(fromLatitude) * Math.cos(toLatitude) * Math.sin(longitudeDelta / 2) ** 2;
 
   return earthRadiusKm * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
 }
@@ -46,8 +42,13 @@ function getPondCreatorLabel(pond: MockPond) {
   return getCreatorLabel(pond.createdBy);
 }
 
+function escapeHtml(value: string) {
+  return value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character] ?? character);
+}
+
 export default function PondMap({ ponds: initialPonds }: PondMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
+  const leafletRef = useRef<typeof import("leaflet") | null>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const polygonsRef = useRef<any[]>([]);
@@ -56,6 +57,8 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
   const [selectedPond, setSelectedPond] = useState<MockPond | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [mapLoadError, setMapLoadError] = useState(false);
+  const [mapLoadAttempt, setMapLoadAttempt] = useState(0);
   const [mapType, setMapType] = useState<"streets" | "satellite" | "terrain">("streets");
   const [showBoundaries, setShowBoundaries] = useState(true);
   const [showHeatmap, setShowHeatmap] = useState(false);
@@ -88,86 +91,58 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    let cancelled = false;
+    setMapLoadError(false);
 
-    let linkTag = document.getElementById("leaflet-css") as HTMLLinkElement;
-    if (!linkTag) {
-      linkTag = document.createElement("link");
-      linkTag.id = "leaflet-css";
-      linkTag.rel = "stylesheet";
-      linkTag.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-      document.head.appendChild(linkTag);
-    }
+    const initializeMap = async () => {
+      try {
+        const L = await import("leaflet");
+        if (cancelled || !mapContainerRef.current || mapInstanceRef.current) return;
+        leafletRef.current = L;
 
-    const scriptId = "leaflet-js";
-    let scriptTag = document.getElementById(scriptId) as HTMLScriptElement;
+        const map = L.map(mapContainerRef.current, {
+          center: [14.63, 121.02],
+          zoom: 10,
+          zoomControl: false,
+        });
 
-    const initializeMap = () => {
-      const L = (window as any).L;
-      if (!L || !mapContainerRef.current || mapInstanceRef.current) return;
+        L.control.zoom({ position: "topright" }).addTo(map);
+        mapInstanceRef.current = map;
+        setMapLoaded(true);
 
-      const defaultCenter = [14.63, 121.02];
-      const map = L.map(mapContainerRef.current, {
-        center: defaultCenter,
-        zoom: 10,
-        zoomControl: false,
-      });
-
-      L.control.zoom({ position: "topright" }).addTo(map);
-      mapInstanceRef.current = map;
-      setMapLoaded(true);
-
-      if ("geolocation" in navigator) {
-        navigator.geolocation.getCurrentPosition(
-          ({ coords }) => {
-            const currentLocation = {
-              lat: coords.latitude,
-              lng: coords.longitude,
-            };
-
-            if (
-              distanceInKm(currentLocation, GONZAGA_CENTER) <=
-              GONZAGA_FOCUS_RADIUS_KM
-            ) {
-              gonzagaFocusAppliedRef.current = true;
-              map.setView([currentLocation.lat, currentLocation.lng], 14, {
-                animate: true,
-              });
-            }
-          },
-          () => {
-            // Keep the existing pond-based view when location access is unavailable.
-          },
-          {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 300000,
-          }
-        );
+        if ("geolocation" in navigator) {
+          navigator.geolocation.getCurrentPosition(
+            ({ coords }) => {
+              const currentLocation = { lat: coords.latitude, lng: coords.longitude };
+              if (distanceInKm(currentLocation, GONZAGA_CENTER) <= GONZAGA_FOCUS_RADIUS_KM) {
+                gonzagaFocusAppliedRef.current = true;
+                map.setView([currentLocation.lat, currentLocation.lng], 14, { animate: true });
+              }
+            },
+            () => undefined,
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 }
+          );
+        }
+      } catch (error) {
+        console.error("Failed to initialize the pond map:", error);
+        if (!cancelled) setMapLoadError(true);
       }
     };
-
-    if (!scriptTag) {
-      scriptTag = document.createElement("script");
-      scriptTag.id = scriptId;
-      scriptTag.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-      scriptTag.onload = initializeMap;
-      document.body.appendChild(scriptTag);
-    } else if ((window as any).L) {
-      initializeMap();
-    } else {
-      scriptTag.onload = initializeMap;
-    }
+    initializeMap();
 
     return () => {
+      cancelled = true;
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
       }
+      leafletRef.current = null;
+      setMapLoaded(false);
     };
-  }, []);
+  }, [mapLoadAttempt]);
 
   useEffect(() => {
-    const L = (window as any).L;
+    const L = leafletRef.current;
     const map = mapInstanceRef.current;
     if (!L || !map || !mapLoaded) return;
 
@@ -192,7 +167,7 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
   }, [mapType, mapLoaded]);
 
   useEffect(() => {
-    const L = (window as any).L;
+    const L = leafletRef.current;
     const map = mapInstanceRef.current;
     if (!L || !map || !mapLoaded) return;
 
@@ -204,7 +179,7 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
     if (showBoundaries) {
       filteredPonds.forEach((pond) => {
         if (pond.boundary && pond.boundary.length >= 3) {
-          const latLngs = pond.boundary.map((c) => [c.lat, c.lng]);
+          const latLngs = pond.boundary.map((c) => [c.lat, c.lng] as [number, number]);
           const polygon = L.polygon(latLngs, {
             color:
               pond.currentSpecies === "Bangus"
@@ -240,7 +215,7 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
           weight: 1,
         });
 
-        circle.bindPopup(`<strong>${pond.name}</strong><br/>Stock Density: ${pond.currentStockCount.toLocaleString()} fish`);
+        circle.bindPopup(`<strong>${escapeHtml(pond.name)}</strong><br/>Stock radius: ${pond.currentStockCount.toLocaleString()} fish`);
         circle.addTo(map);
         markersRef.current.push(circle);
       } else {
@@ -262,8 +237,8 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
         const marker = L.marker([pond.coordinates.lat, pond.coordinates.lng], { icon: customIcon });
         const popupContent = `
           <div class="pond-map-popup">
-            <h4>${pond.name}</h4>
-            <p>Species: <strong>${pond.currentSpecies || "None"}</strong></p>
+            <h4>${escapeHtml(pond.name)}</h4>
+            <p>Species: <strong>${escapeHtml(pond.currentSpecies || "None")}</strong></p>
             <p>Stock: <strong>${pond.currentStockCount.toLocaleString()}</strong></p>
             <button id="btn-popup-${pond.id}">View details</button>
           </div>
@@ -308,7 +283,7 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
 
   const handlePondClick = (pond: MockPond) => {
     setSelectedPond(pond);
-    const L = (window as any).L;
+    const L = leafletRef.current;
     const map = mapInstanceRef.current;
     if (L && map) {
       map.setView([pond.coordinates.lat, pond.coordinates.lng], 14, { animate: true });
@@ -336,7 +311,7 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
             <h2>Pond list</h2>
           </div>
           <div className="pond-map-sidebar-actions">
-            <span className="ui-pill ui-pill-ghost">{filteredPonds.length} shown</span>
+            <span className="ui-pill ui-pill-ghost">{filteredPonds.length} of {ponds.length}</span>
             <button
               aria-expanded={!listCollapsed}
               className="pond-map-list-toggle"
@@ -440,7 +415,13 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
 
       <div className="pond-map-stage">
         <div className="pond-map-canvas" ref={mapContainerRef}>
-          {!mapLoaded ? (
+          {mapLoadError ? (
+            <div className="pond-map-loading pond-map-error" role="alert">
+              <strong>Map could not load</strong>
+              <p>The pond list is still available. Check your connection, then try again.</p>
+              <button className="secondary-button" type="button" onClick={() => setMapLoadAttempt((attempt) => attempt + 1)}>Retry map</button>
+            </div>
+          ) : !mapLoaded ? (
             <div className="pond-map-loading">
               <span className="ui-skeleton ui-skeleton-pill" />
               <p>Loading map tiles...</p>
@@ -475,7 +456,7 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
           <label className="toggle-field pond-map-toggle">
             <input type="checkbox" checked={showHeatmap} onChange={(e) => setShowHeatmap(e.target.checked)} />
             <span>
-              <strong>Density</strong>
+              <strong>Stock radius</strong>
             </span>
           </label>
         </div>
@@ -510,6 +491,10 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
                 <span>Created By</span>
                 <strong>{getPondCreatorLabel(selectedPond)}</strong>
               </article>
+            </div>
+            <div className="pond-map-detail-actions">
+              <Link className="primary-button" href={`/admin/records?pond=${encodeURIComponent(selectedPond.name)}`}>View pond records</Link>
+              <Link className="secondary-button" href={`/admin/users/${encodeURIComponent(selectedPond.createdBy)}`}>View assigned staff</Link>
             </div>
           </aside>
         ) : null}

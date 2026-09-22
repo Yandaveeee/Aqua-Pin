@@ -1,6 +1,4 @@
-"use client";
-
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { formatDateTime, formatRelativeTime } from "@/lib/admin-format";
 
 export type AdminUserListItem = {
@@ -16,12 +14,6 @@ export type AdminUserListItem = {
 };
 
 export default function AdminUsersTable({ users }: { users: AdminUserListItem[] }) {
-  const router = useRouter();
-
-  const openUser = (id: string) => {
-    router.push(`/admin/users/${encodeURIComponent(id)}`);
-  };
-
   return (
     <div className="table-wrap user-directory-wrap">
       <table className="data-table user-directory-table">
@@ -37,20 +29,7 @@ export default function AdminUsersTable({ users }: { users: AdminUserListItem[] 
         </thead>
         <tbody>
           {users.map((user) => (
-            <tr
-              aria-label={`Open profile for ${user.fullName}`}
-              className="user-directory-row"
-              key={user.id}
-              onClick={() => openUser(user.id)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  openUser(user.id);
-                }
-              }}
-              role="link"
-              tabIndex={0}
-            >
+            <tr className="user-directory-row" key={user.id}>
               <td className="table-primary-cell" data-label="User">
                 <span className="user-directory-identity">
                   <span className="user-directory-avatar" aria-hidden="true">
@@ -61,7 +40,10 @@ export default function AdminUsersTable({ users }: { users: AdminUserListItem[] 
                       .join("")}
                   </span>
                   <span>
-                    <strong>{user.fullName}</strong>
+                    <Link href={`/admin/users/${encodeURIComponent(user.id)}`}>
+                      <strong>{user.fullName}</strong>
+                    </Link>
+                    <small>{user.email}</small>
                   </span>
                 </span>
               </td>
@@ -88,11 +70,13 @@ export default function AdminUsersTable({ users }: { users: AdminUserListItem[] 
                   <small>{user.locationLabel && user.region ? user.region : "GPS snapshot"}</small>
                 </span>
               </td>
-              <td className="user-directory-open" aria-hidden="true">
-                <span>View</span>
+              <td className="user-directory-open">
+                <Link aria-label={`View ${user.fullName}'s profile`} href={`/admin/users/${encodeURIComponent(user.id)}`}>
+                  <span>View</span>
                 <svg viewBox="0 0 20 20">
                   <path d="m7.5 4 6 6-6 6" />
                 </svg>
+                </Link>
               </td>
             </tr>
           ))}

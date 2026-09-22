@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 type AdminTopBarProps = {
   organizationName: string;
@@ -64,6 +64,11 @@ function getPageMeta(
     };
   }
 
+  if (pathname.startsWith("/admin/analytics")) return { title: "Analytics", description: "Explore operational trends, harvest outcomes, and pond performance.", shortcuts: [{ href: "/admin/records", label: "Records" }] };
+  if (pathname.startsWith("/admin/feed")) return { title: "Feed inventory", description: "Monitor stock on hand, usage, and reorder risk.", shortcuts: [{ href: "/admin/ponds", label: "Ponds" }] };
+  if (pathname.startsWith("/admin/approvals")) return { title: "Approvals", description: "Review account access requests and approval status.", shortcuts: [{ href: "/admin/users", label: "Users" }] };
+  if (pathname.startsWith("/admin/verification")) return { title: "Verification", description: "Run integrity checks and review synchronization health.", shortcuts: [{ href: "/admin/settings", label: "Settings", badge: settingsChanges }] };
+
   return {
     title: "Operations",
     description: "Track pond health and field activity.",
@@ -85,7 +90,12 @@ export default function AdminTopBar({
   const pathname = usePathname();
   const router = useRouter();
   const [refreshing, startRefresh] = useTransition();
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const pageMeta = getPageMeta(pathname, settingsChanges);
+
+  useEffect(() => {
+    setUpdatedAt(new Date());
+  }, [pathname, refreshing]);
 
   return (
     <header className="admin-topbar">
@@ -107,10 +117,14 @@ export default function AdminTopBar({
         </button>
 
         <div className="admin-topbar-copy">
+          <div className="admin-topbar-context">
+            <span>{organizationName}</span>
+            <span aria-hidden="true">/</span>
+            <strong>{pageMeta.title}</strong>
+            <span className="admin-environment-label">{envLabel}</span>
+          </div>
           <div className="admin-topbar-meta">
-            <span className="ui-pill ui-pill-ghost">{organizationName}</span>
-            <span className="ui-pill ui-pill-info">{envLabel}</span>
-            <span className={`ui-pill ${attentionCount > 0 ? "ui-pill-warning" : "ui-pill-success"}`}>
+            <span className={`admin-operation-status ${attentionCount > 0 ? "is-warning" : "is-stable"}`}>
               {attentionCount > 0 ? (
                 <>
                   <span className="admin-attention-count">{attentionCount}</span>
@@ -119,6 +133,9 @@ export default function AdminTopBar({
               ) : (
                 "Operations stable"
               )}
+            </span>
+            <span className="admin-updated-at" aria-live="polite">
+              {refreshing ? "Updating data…" : updatedAt ? "Updated just now" : "Loading status…"}
             </span>
           </div>
           <div className="admin-topbar-heading">
@@ -132,7 +149,7 @@ export default function AdminTopBar({
         <button
           className="secondary-button admin-action-button admin-action-refresh"
           type="button"
-          onClick={() => startRefresh(() => router.refresh())}
+          onClick={() => startRefresh(() => { router.refresh(); setUpdatedAt(new Date()); })}
         >
           <svg aria-hidden="true" viewBox="0 0 24 24">
             <path d="M20 6v5h-5" />

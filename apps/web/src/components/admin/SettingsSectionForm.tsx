@@ -1,4 +1,7 @@
+"use client";
+
 import type { AdminSettingsSections, SettingSection } from "@aquapin/shared";
+import { useEffect, useRef, useState } from "react";
 import { updateAdminSettingAction } from "@/app/admin/settings/actions";
 import { formatDateTime } from "@/lib/admin-format";
 import { SETTINGS_SECTION_META } from "@/lib/admin-settings";
@@ -17,13 +20,31 @@ const ACTIVE_FIELDS = {
 } as const;
 
 export default function SettingsSectionForm({ section, value, updatedAt, updatedByLabel }: SettingsSectionFormProps) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const warnUnsaved = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warnUnsaved);
+    return () => window.removeEventListener("beforeunload", warnUnsaved);
+  }, [dirty]);
+
   if (!(section in ACTIVE_FIELDS)) return null;
   const field = ACTIVE_FIELDS[section as keyof typeof ACTIVE_FIELDS];
   const meta = SETTINGS_SECTION_META[section];
   const values = value as unknown as Record<string, string | number | boolean>;
 
   return (
-    <form className="settings-card" action={updateAdminSettingAction}>
+    <form
+      className={`settings-card${dirty ? " is-dirty" : ""}`}
+      action={updateAdminSettingAction}
+      ref={formRef}
+      onChange={() => setDirty(true)}
+      onSubmit={() => setDirty(false)}
+    >
       <div className="settings-card-head">
         <div>
           <h4>{meta.title}</h4>
@@ -52,7 +73,11 @@ export default function SettingsSectionForm({ section, value, updatedAt, updated
         <p className="field-hint">{field.hint}</p>
       </div>
       <div className="settings-card-footer">
-        <button className="primary-button" type="submit">Save {meta.title}</button>
+        <span className="settings-unsaved-status" aria-live="polite">{dirty ? "Unsaved changes" : "All changes saved"}</span>
+        <div>
+          {dirty ? <button className="secondary-button" type="button" onClick={() => { formRef.current?.reset(); setDirty(false); }}>Discard</button> : null}
+          <button className="primary-button" type="submit" disabled={!dirty}>Save {meta.title}</button>
+        </div>
       </div>
       {updatedAt ? <p className="muted">Updated {formatDateTime(updatedAt)} by {updatedByLabel}</p> : null}
     </form>

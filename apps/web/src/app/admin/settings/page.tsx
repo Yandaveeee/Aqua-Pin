@@ -1,5 +1,5 @@
 import type { Database, SettingSection } from "@aquapin/shared";
-import AdminPageHeader from "@/components/admin/AdminPageHeader";
+import ConfirmSubmitButton from "@/components/admin/ConfirmSubmitButton";
 import SettingsAuditDiff from "@/components/admin/SettingsAuditDiff";
 import SettingsSectionForm from "@/components/admin/SettingsSectionForm";
 import { updateAdminSettingAction } from "@/app/admin/settings/actions";
@@ -114,12 +114,6 @@ export default async function AdminSettingsPage({ searchParams }: AdminSettingsP
 
   return (
     <section className="stack">
-      <AdminPageHeader
-        eyebrow="Configuration"
-        title="Settings"
-        description="Manage your organization name and pond alert thresholds."
-      />
-
       {params?.saved ? (
         <p className="flash-success">
           Saved <strong>{SETTINGS_SECTION_META[params.saved as SettingSection]?.title ?? params.saved}</strong>{" "}
@@ -176,9 +170,10 @@ export default async function AdminSettingsPage({ searchParams }: AdminSettingsP
                           name="value"
                           value={JSON.stringify(row.previous_value)}
                         />
-                        <button className="secondary-button" type="submit">
-                          Restore Previous
-                        </button>
+                        <ConfirmSubmitButton
+                          label="Restore previous"
+                          message={`Restore this ${SETTINGS_SECTION_META[section]?.title ?? row.section} configuration from ${formatDateTime(row.changed_at)}? This will replace its current values and create a new audit entry.`}
+                        />
                       </form>
                     ) : null}
                   </div>
