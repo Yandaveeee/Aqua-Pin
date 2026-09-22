@@ -139,18 +139,18 @@ export const ADMIN_SETTINGS_DEFAULTS: AdminSettingsSections = {
 export const SETTINGS_SECTION_META: Record<SettingSection, SectionMeta> = {
   general: {
     title: "General",
-    description: "Identity, time zone, and default unit preferences for the console.",
+    description: "The organization name shown in the admin console.",
     caption: "Organization profile",
   },
   operations: {
     title: "Operations",
-    description: "Thresholds and default map behavior used across pond operations.",
+    description: "Choose when an active pond should be flagged for low stock.",
     caption: "Operational thresholds",
   },
   notifications: {
-    title: "Notifications",
-    description: "Alert routing, sync windows, and critical-only escalation rules.",
-    caption: "Alert delivery",
+    title: "Activity alerts",
+    description: "Choose how long a pond can go without new records before it is flagged.",
+    caption: "Pond activity",
   },
   integrations: {
     title: "Integrations",

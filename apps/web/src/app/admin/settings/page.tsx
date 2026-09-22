@@ -108,14 +108,16 @@ export default async function AdminSettingsPage({ searchParams }: AdminSettingsP
     }
   }
 
-  const sectionStates = buildSettingsSectionStates(settingsRows);
+  const sectionStates = buildSettingsSectionStates(settingsRows).filter((state) =>
+    ["general", "operations", "notifications"].includes(state.section)
+  );
 
   return (
     <section className="stack">
       <AdminPageHeader
         eyebrow="Configuration"
         title="Settings"
-        description="Manage essential organization, pond-alert, and notification settings for AquaPin."
+        description="Manage your organization name and pond alert thresholds."
       />
 
       {params?.saved ? (
@@ -126,35 +128,7 @@ export default async function AdminSettingsPage({ searchParams }: AdminSettingsP
       ) : null}
       {params?.error ? <p className="flash-error">{params.error}</p> : null}
 
-      <div className="card-grid three-col">
-        <article className="metric-card">
-          <p className="metric-label">Sections</p>
-          <p className="metric-value">{sectionStates.length}</p>
-          <p className="metric-detail">Validated settings groups in the console</p>
-        </article>
-        <article className="metric-card">
-          <p className="metric-label">Audit Entries</p>
-          <p className="metric-value">{auditRows.length}</p>
-          <p className="metric-detail">Recent settings changes available for review</p>
-        </article>
-        <article className="metric-card">
-          <p className="metric-label">Latest Change</p>
-          <p className="metric-value">{auditRows[0] ? formatDateTime(auditRows[0].changed_at) : "None"}</p>
-          <p className="metric-detail">Most recent configuration write</p>
-        </article>
-      </div>
-
       <article className="panel">
-        <div className="panel-header-row">
-          <div>
-            <h3 className="panel-title">Section Editors</h3>
-            <p className="panel-subtitle">
-              Keep the core settings that support the mobile field workflow up to date.
-            </p>
-          </div>
-          <span className="ui-pill ui-pill-ghost">Structured forms</span>
-        </div>
-
         <div className="settings-grid">
           {sectionStates.map((state) => (
             <SettingsSectionForm
@@ -170,16 +144,8 @@ export default async function AdminSettingsPage({ searchParams }: AdminSettingsP
         </div>
       </article>
 
-      <article className="panel">
-        <div className="panel-header-row">
-          <div>
-            <h3 className="panel-title">Recent Settings Audit</h3>
-            <p className="panel-subtitle">
-              Review field-level diffs and restore a previous configuration snapshot when needed.
-            </p>
-          </div>
-          <span className="ui-pill ui-pill-ghost">{auditRows.length} entries</span>
-        </div>
+      <details className="panel detail-disclosure">
+        <summary>Recent settings changes ({auditRows.length})</summary>
 
         <div className="settings-audit-list">
           {auditRows.length > 0 ? (
@@ -223,19 +189,7 @@ export default async function AdminSettingsPage({ searchParams }: AdminSettingsP
                     nextValue={row.new_value}
                   />
 
-                  <details className="detail-disclosure">
-                    <summary>View raw before/after payload</summary>
-                    <div className="settings-raw-grid">
-                      <div>
-                        <strong>Previous</strong>
-                        <pre>{JSON.stringify(row.previous_value ?? {}, null, 2)}</pre>
-                      </div>
-                      <div>
-                        <strong>New</strong>
-                        <pre>{JSON.stringify(row.new_value, null, 2)}</pre>
-                      </div>
-                    </div>
-                  </details>
+
                 </article>
               );
             })
@@ -246,7 +200,7 @@ export default async function AdminSettingsPage({ searchParams }: AdminSettingsP
             </div>
           )}
         </div>
-      </article>
+      </details>
     </section>
   );
 }

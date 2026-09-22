@@ -181,50 +181,13 @@ export function AdminApprovalsLoading() {
 
 export function AdminSettingsLoading() {
   return (
-    <section className="stack" aria-busy="true" aria-live="polite">
+    <section className="stack" role="status" aria-busy="true" aria-label="Loading settings">
       <SkeletonHeader />
-      <SkeletonMetricCards count={3} />
-
-      <article className="panel">
-        <div className="panel-header-row">
-          <div className="ui-skeleton-cluster">
-            <SkeletonBlock className="ui-skeleton-heading" />
-            <SkeletonBlock className="ui-skeleton-line ui-skeleton-wide" />
-          </div>
-          <SkeletonBlock className="ui-skeleton-pill ui-skeleton-pill-short" />
-        </div>
-
-        <div className="settings-grid">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <article className="settings-card" key={index}>
-              <div className="settings-card-head">
-                <div className="ui-skeleton-cluster">
-                  <SkeletonBlock className="ui-skeleton-line ui-skeleton-short" />
-                  <SkeletonBlock className="ui-skeleton-heading" />
-                  <SkeletonBlock className="ui-skeleton-line ui-skeleton-wide" />
-                </div>
-                <div className="ui-skeleton-cluster">
-                  <SkeletonBlock className="ui-skeleton-line ui-skeleton-short" />
-                  <SkeletonBlock className="ui-skeleton-line ui-skeleton-medium" />
-                </div>
-              </div>
-
-              <div className="settings-field-grid">
-                <SkeletonBlock className="ui-skeleton-input" />
-                <SkeletonBlock className="ui-skeleton-input" />
-                <SkeletonBlock className="ui-skeleton-input" />
-                <SkeletonBlock className="ui-skeleton-input" />
-              </div>
-
-              <div className="settings-card-footer">
-                <SkeletonBlock className="ui-skeleton-button" />
-              </div>
-            </article>
-          ))}
-        </div>
-      </article>
-
-      <SkeletonPanel lines={0} withRows={4} />
+      <div className="settings-grid">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <SkeletonPanel key={index} lines={2} />
+        ))}
+      </div>
     </section>
   );
 }
