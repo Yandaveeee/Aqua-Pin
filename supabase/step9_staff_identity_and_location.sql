@@ -20,12 +20,17 @@ ALTER TABLE public.public_profiles
 UPDATE public.public_profiles AS profile
 SET full_name = COALESCE(
       NULLIF(BTRIM(auth_user.raw_user_meta_data ->> 'full_name'), ''),
+      NULLIF(BTRIM(profile.full_name), ''),
       INITCAP(REPLACE(REPLACE(SPLIT_PART(profile.email, '@', 1), '.', ' '), '_', ' '))
     ),
     updated_at = NOW()
 FROM auth.users AS auth_user
 WHERE auth_user.id = profile.id
-  AND NULLIF(BTRIM(profile.full_name), '') IS NULL;
+  AND profile.full_name IS DISTINCT FROM COALESCE(
+    NULLIF(BTRIM(auth_user.raw_user_meta_data ->> 'full_name'), ''),
+    NULLIF(BTRIM(profile.full_name), ''),
+    INITCAP(REPLACE(REPLACE(SPLIT_PART(profile.email, '@', 1), '.', ' '), '_', ' '))
+  );
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger
