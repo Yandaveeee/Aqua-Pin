@@ -1,28 +1,11 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { MOCK_PONDS, MockPond } from "@/lib/mock-data";
 
 interface PondMapProps {
   ponds?: MockPond[];
-}
-
-const GONZAGA_CENTER = { lat: 18.2594, lng: 122.0054 };
-const GONZAGA_FOCUS_RADIUS_KM = 55;
-
-function distanceInKm(from: { lat: number; lng: number }, to: { lat: number; lng: number }) {
-  const earthRadiusKm = 6371;
-  const toRadians = (value: number) => (value * Math.PI) / 180;
-  const latitudeDelta = toRadians(to.lat - from.lat);
-  const longitudeDelta = toRadians(to.lng - from.lng);
-  const fromLatitude = toRadians(from.lat);
-  const toLatitude = toRadians(to.lat);
-  const haversine =
-    Math.sin(latitudeDelta / 2) ** 2 +
-    Math.cos(fromLatitude) * Math.cos(toLatitude) * Math.sin(longitudeDelta / 2) ** 2;
-
-  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
 }
 
 function getPondTone(pond: MockPond) {
@@ -52,7 +35,10 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const polygonsRef = useRef<any[]>([]);
-  const gonzagaFocusAppliedRef = useRef(false);
+  const userLocationMarkerRef = useRef<any>(null);
+  const userAccuracyCircleRef = useRef<any>(null);
+  const locationRequestedRef = useRef(false);
+  const locationFocusActiveRef = useRef(false);
   const [ponds] = useState<MockPond[]>(initialPonds || MOCK_PONDS);
   const [selectedPond, setSelectedPond] = useState<MockPond | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -64,6 +50,7 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [creatorFilter, setCreatorFilter] = useState("all");
   const [listCollapsed, setListCollapsed] = useState(false);
+  const [locationStatus, setLocationStatus] = useState<"idle" | "locating" | "ready" | "denied" | "error">("idle");
 
   const filteredPonds = ponds.filter((pond) => {
     const normalizedSearch = searchQuery.trim().toLowerCase();
@@ -89,6 +76,50 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
     return { activeCount, boundaryCount, lowStockCount, totalStock };
   }, [ponds]);
 
+  const focusUserLocation = useCallback(() => {
+    const L = leafletRef.current;
+    const map = mapInstanceRef.current;
+    if (!L || !map || !navigator.geolocation) {
+      setLocationStatus("error");
+      return;
+    }
+
+    setLocationStatus("locating");
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        const position: [number, number] = [coords.latitude, coords.longitude];
+        locationFocusActiveRef.current = true;
+
+        if (userLocationMarkerRef.current) map.removeLayer(userLocationMarkerRef.current);
+        if (userAccuracyCircleRef.current) map.removeLayer(userAccuracyCircleRef.current);
+
+        const locationIcon = L.divIcon({
+          html: '<div class="pond-map-user-marker"><span></span></div>',
+          className: "custom-map-marker",
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
+        });
+        userAccuracyCircleRef.current = L.circle(position, {
+          radius: Math.max(8, coords.accuracy || 0),
+          color: "#2563eb",
+          fillColor: "#60a5fa",
+          fillOpacity: 0.14,
+          weight: 1,
+          interactive: false,
+        }).addTo(map);
+        userLocationMarkerRef.current = L.marker(position, { icon: locationIcon })
+          .bindTooltip("Your location", { direction: "top", offset: [0, -10] })
+          .addTo(map);
+        map.setView(position, 16, { animate: true });
+        setLocationStatus("ready");
+      },
+      (error) => {
+        setLocationStatus(error.code === error.PERMISSION_DENIED ? "denied" : "error");
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+    );
+  }, []);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     let cancelled = false;
@@ -110,19 +141,6 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
         mapInstanceRef.current = map;
         setMapLoaded(true);
 
-        if ("geolocation" in navigator) {
-          navigator.geolocation.getCurrentPosition(
-            ({ coords }) => {
-              const currentLocation = { lat: coords.latitude, lng: coords.longitude };
-              if (distanceInKm(currentLocation, GONZAGA_CENTER) <= GONZAGA_FOCUS_RADIUS_KM) {
-                gonzagaFocusAppliedRef.current = true;
-                map.setView([currentLocation.lat, currentLocation.lng], 14, { animate: true });
-              }
-            },
-            () => undefined,
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 }
-          );
-        }
       } catch (error) {
         console.error("Failed to initialize the pond map:", error);
         if (!cancelled) setMapLoadError(true);
@@ -137,9 +155,19 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
         mapInstanceRef.current = null;
       }
       leafletRef.current = null;
+      userLocationMarkerRef.current = null;
+      userAccuracyCircleRef.current = null;
+      locationRequestedRef.current = false;
+      locationFocusActiveRef.current = false;
       setMapLoaded(false);
     };
   }, [mapLoadAttempt]);
+
+  useEffect(() => {
+    if (!mapLoaded || locationRequestedRef.current) return;
+    locationRequestedRef.current = true;
+    focusUserLocation();
+  }, [focusUserLocation, mapLoaded]);
 
   useEffect(() => {
     const L = leafletRef.current;
@@ -257,7 +285,7 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
       }
     });
 
-    if (filteredPonds.length > 0 && !gonzagaFocusAppliedRef.current) {
+    if (filteredPonds.length > 0 && !locationFocusActiveRef.current) {
       const bounds = L.latLngBounds(
         filteredPonds.map((pond) => [pond.coordinates.lat, pond.coordinates.lng])
       );
@@ -282,6 +310,7 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
   }, [listCollapsed]);
 
   const handlePondClick = (pond: MockPond) => {
+    locationFocusActiveRef.current = false;
     setSelectedPond(pond);
     const L = leafletRef.current;
     const map = mapInstanceRef.current;
@@ -357,7 +386,10 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
             type="search"
             placeholder="Name, species, or staff"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              locationFocusActiveRef.current = false;
+              setSearchQuery(e.target.value);
+            }}
           />
 
           <label className="sr-only" htmlFor="creator-filter">
@@ -367,7 +399,10 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
             className="field-input"
             id="creator-filter"
             value={creatorFilter}
-            onChange={(e) => setCreatorFilter(e.target.value)}
+            onChange={(e) => {
+              locationFocusActiveRef.current = false;
+              setCreatorFilter(e.target.value);
+            }}
           >
             <option value="all">All field staff</option>
             {creators.map(([creatorId, creatorLabel]) => (
@@ -440,6 +475,20 @@ export default function PondMap({ ponds: initialPonds }: PondMapProps) {
               {type === "streets" ? "Street" : type === "satellite" ? "Satellite" : "Terrain"}
             </button>
           ))}
+          <button
+            className={`pond-map-locate-button${locationStatus === "ready" ? " is-located" : ""}`}
+            disabled={locationStatus === "locating" || !mapLoaded}
+            onClick={focusUserLocation}
+            title={locationStatus === "denied" ? "Location permission is blocked in your browser" : "Zoom to your current location"}
+            type="button"
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+              <circle cx="12" cy="12" r="7" />
+            </svg>
+            {locationStatus === "locating" ? "Locating…" : locationStatus === "denied" ? "Location blocked" : "My location"}
+          </button>
         </div>
 
         <div className="pond-map-layer-panel" aria-label="Map layers">
