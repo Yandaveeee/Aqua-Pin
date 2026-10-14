@@ -192,6 +192,24 @@ export default function LoginForm({ envLabel, nextPath, notice, version }: Login
         {submitting ? "Signing in..." : "Sign In"}
       </button>
 
+      <div className="auth-login-apk-banner">
+        <div className="auth-apk-content">
+          <span className="auth-apk-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+          </span>
+          <div className="auth-apk-text">
+            <strong>Field Staff &amp; Mobile App</strong>
+            <span>Need the mobile app on Android?</span>
+          </div>
+        </div>
+        <a href="/download" className="auth-apk-cta-btn">
+          Install APK &rarr;
+        </a>
+      </div>
     </form>
   );
 }

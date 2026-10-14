@@ -7835,6 +7835,102 @@ code {
   background: linear-gradient(135deg, #00747c, #005f67);
 }
 
+.auth-login-apk-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.75rem;
+  padding: 0.9rem 1.15rem;
+  background: #f0fdfa;
+  border: 1px solid #ccfbf1;
+  border-radius: 10px;
+}
+
+.auth-apk-content {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.auth-apk-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(13, 148, 136, 0.12);
+  color: #0f766e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.auth-apk-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.auth-apk-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-apk-text strong {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #134e4a;
+}
+
+.auth-apk-text span {
+  font-size: 0.775rem;
+  color: #64748b;
+}
+
+.auth-apk-cta-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45rem 0.85rem;
+  background: #00747c;
+  color: #ffffff !important;
+  border-radius: 6px;
+  font-size: 0.825rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 116, 124, 0.25);
+  transition: all 0.15s ease;
+}
+
+.auth-apk-cta-btn:hover {
+  background: #005f67;
+  transform: translateY(-1px);
+}
+
+.auth-hero-apk-block {
+  margin-top: 1.5rem;
+}
+
+.auth-hero-apk-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.6rem 1.25rem;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 9999px;
+  color: #ffffff !important;
+  text-decoration: none;
+  font-size: 0.875rem;
+  backdrop-filter: blur(8px);
+  transition: all 0.15s ease;
+}
+
+.auth-hero-apk-link:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateY(-1px);
+}
+
 .auth-redesign .auth-console-footer {
   margin-top: 4.6rem;
   padding: 0;
