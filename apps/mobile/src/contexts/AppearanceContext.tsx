@@ -9,7 +9,7 @@ type AppearanceContextType = {
   appearanceMode: AppearanceMode;
   isDarkMode: boolean;
   isLoaded: boolean;
-  setAppearanceMode: (mode: AppearanceMode) => Promise<void>;
+  setAppearanceMode: (mode: AppearanceMode, persist?: boolean) => Promise<void>;
 };
 
 const AppearanceContext = createContext<AppearanceContextType | undefined>(undefined);
@@ -29,6 +29,8 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
         if (storedMode === 'light' || storedMode === 'dark') {
           setAppearanceModeState(storedMode);
         }
+      } catch (error) {
+        console.warn('Unable to restore appearance', error);
       } finally {
         if (mounted) {
           setIsLoaded(true);
@@ -43,9 +45,9 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
     };
   }, []);
 
-  const setAppearanceMode = useCallback(async (mode: AppearanceMode) => {
+  const setAppearanceMode = useCallback(async (mode: AppearanceMode, persist = true) => {
+    if (persist) await AsyncStorage.setItem(APP_APPEARANCE_KEY, mode);
     setAppearanceModeState(mode);
-    await AsyncStorage.setItem(APP_APPEARANCE_KEY, mode);
   }, []);
 
   const value = useMemo<AppearanceContextType>(() => ({

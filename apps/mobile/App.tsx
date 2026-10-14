@@ -1,3 +1,5 @@
+import AppErrorBoundary from './src/components/AppErrorBoundary';
+import { LanguageProvider } from './src/contexts/LanguageContext';
 import { StatusBar } from 'expo-status-bar';
 import React from 'react';
 import { View, ActivityIndicator, StyleSheet, Text, Image } from 'react-native';
@@ -52,7 +54,7 @@ function AppFrame() {
   return (
     <SyncProvider key={user?.id || 'signed-out'} enabled={!!user}>
       <RealtimeSyncBridge />
-      <Root />
+      <AppErrorBoundary><Root /></AppErrorBoundary>
       <StatusBar style={user && isDarkMode ? 'light' : 'dark'} />
     </SyncProvider>
   );
@@ -63,7 +65,7 @@ export default function App() {
     <SafeAreaProvider>
       <AppearanceProvider>
         <AuthProvider>
-          <AppFrame />
+          <LanguageProvider><AppFrame /></LanguageProvider>
         </AuthProvider>
       </AppearanceProvider>
     </SafeAreaProvider>

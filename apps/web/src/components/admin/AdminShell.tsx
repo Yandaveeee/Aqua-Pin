@@ -46,6 +46,7 @@ export default function AdminShell({ children, userEmail, shellData }: AdminShel
     {
       label: "System",
       items: [
+        { href: "/admin/install-apk", label: "Install APK" },
         { href: "/admin/settings", label: "Settings", badge: shellData.navBadges.settings },
       ],
     },

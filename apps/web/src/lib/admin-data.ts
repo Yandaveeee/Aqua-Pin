@@ -2,7 +2,7 @@ import { cache } from "react";
 import type { Json } from "@aquapin/shared";
 import type { Database } from "@aquapin/shared";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { normalizeAdminSettingSection } from "@/lib/admin-settings";
+import { ADMIN_SETTINGS_DEFAULTS, normalizeAdminSettingSection } from "@/lib/admin-settings";
 import { formatSignedDelta, pluralize } from "@/lib/admin-format";
 
 type EventTable = "stocking_logs" | "mortality_logs" | "harvests" | "pond_history";
@@ -681,4 +681,28 @@ export async function getDashboardOverview(days: number): Promise<DashboardOverv
     },
     updatedAt: new Date().toISOString(),
   };
+}
+
+export async function getApkReleaseInfo() {
+  const { cookies } = await import("next/headers");
+  const cookieStore = await cookies();
+  const isMock = cookieStore.get("aquapin_mock_admin")?.value === "true";
+
+  if (isMock) {
+    return ADMIN_SETTINGS_DEFAULTS.general;
+  }
+
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { data } = await supabase
+      .from("admin_settings")
+      .select("value")
+      .eq("section", "general")
+      .maybeSingle();
+
+    const row = data as { value?: unknown } | null;
+    return normalizeAdminSettingSection("general", row?.value);
+  } catch {
+    return ADMIN_SETTINGS_DEFAULTS.general;
+  }
 }

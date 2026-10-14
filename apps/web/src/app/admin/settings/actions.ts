@@ -26,7 +26,10 @@ export async function updateAdminSettingAction(formData: FormData) {
   const section = String(formData.get("section") ?? "").trim();
   const rawValue = String(formData.get("value") ?? "");
   const returnTo = String(formData.get("returnTo") ?? "/admin/settings");
-  const safeReturnTo = returnTo.startsWith("/admin/settings") ? returnTo : "/admin/settings";
+  const safeReturnTo =
+    returnTo.startsWith("/admin/settings") || returnTo.startsWith("/admin/install-apk")
+      ? returnTo
+      : "/admin/settings";
 
   if (!ALLOWED_SECTIONS.has(section)) {
     redirect(appendQueryParam(safeReturnTo, "error", "Invalid settings section."));
@@ -70,5 +73,8 @@ export async function updateAdminSettingAction(formData: FormData) {
 
   revalidatePath("/admin");
   revalidatePath("/admin/settings");
+  revalidatePath("/admin/install-apk");
+  revalidatePath("/download");
+  revalidatePath("/");
   redirect(appendQueryParam(safeReturnTo, "saved", section));
 }

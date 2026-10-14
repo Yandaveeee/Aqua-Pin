@@ -1,3 +1,4 @@
+import { useLanguage } from '../contexts/LanguageContext';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -37,6 +38,7 @@ function entityLabel(entity: string): string {
 }
 
 export default function SyncScreen() {
+  const { t } = useLanguage();
   const {
     isSyncing,
     lastSync,
@@ -70,16 +72,15 @@ export default function SyncScreen() {
   }, [isInternetReachable, isOnline, isWifi, syncSettings.wifiOnly]);
 
   const handleSync = useCallback(async () => {
+    if (manualSyncRef.current || isSyncing) return;
     manualSyncRef.current = true;
     try {
       const result = await performSync(true);
-      if (!result.success) {
-        Alert.alert('Sync Failed', result.message || 'Sync failed.');
-      }
+      Alert.alert(result.success ? 'Synced' : 'Sync Failed', result.message);
     } finally {
       manualSyncRef.current = false;
     }
-  }, [performSync]);
+  }, [performSync, isSyncing]);
 
   const copyError = useCallback(async (item: SyncQueueItem) => {
     const text = [
@@ -110,12 +111,15 @@ export default function SyncScreen() {
   }, []);
 
   const handleRetryAll = useCallback(async () => {
-    await retryAllFailed();
-    const result = await performSync(false);
-    if (!result.success) {
-      Alert.alert('Retry Result', result.message || 'Some queue items still failed.');
-    }
-  }, [performSync, retryAllFailed]);
+    if (manualSyncRef.current || isSyncing) return;
+    manualSyncRef.current = true;
+    try {
+      await retryAllFailed();
+      const result = await performSync(false);
+      Alert.alert(result.success ? 'Synced' : 'Retry Result', result.message);
+    } catch { Alert.alert('Unable to retry', 'Please check your connection and try again.'); }
+    finally { manualSyncRef.current = false; }
+  }, [performSync, retryAllFailed, isSyncing]);
 
   useEffect(() => {
     const currentLastSync = lastSync?.getTime() || 0;
@@ -263,12 +267,13 @@ export default function SyncScreen() {
                 </View>
                 <Text style={styles.errorMeta}>Operation: {item.operation}</Text>
                 <Text style={styles.errorMeta}>Attempts: {item.attempts}</Text>
-                <Text style={styles.errorMessage}>{item.lastError || 'Unknown error'}</Text>
+                <Text style={styles.errorMessage}>This record could not synchronize. Check your connection and retry. Use Share Details when contacting support.</Text>
                 <View style={styles.errorActions}>
                   <TouchableOpacity
                     style={styles.errorActionBtn}
                     onPress={() => {
-                      void retrySyncItem(item.id);
+                      if (isSyncing) return;
+                      void retrySyncItem(item.id).catch(() => Alert.alert('Unable to retry', 'Please try again.'));
                     }}
                   >
                     <Text style={styles.errorActionText}>Retry</Text>
@@ -295,12 +300,12 @@ export default function SyncScreen() {
           {isSyncing ? (
             <>
               <ActivityIndicator color="#fff" style={styles.syncIcon} />
-              <Text style={styles.syncButtonText}>Syncing...</Text>
+              <Text style={styles.syncButtonText}>{t('Syncing...')}</Text>
             </>
           ) : (
             <>
               <Ionicons name="sync-outline" size={20} color="#fff" style={styles.syncIcon} />
-              <Text style={styles.syncButtonText}>{canSyncNow ? 'Sync Now' : 'Waiting for network policy'}</Text>
+              <Text style={styles.syncButtonText}>{canSyncNow ? t('Sync Now') : 'Waiting for network policy'}</Text>
             </>
           )}
         </TouchableOpacity>

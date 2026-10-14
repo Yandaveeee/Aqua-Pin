@@ -1,4 +1,7 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { useAuth } from '../contexts/AuthContext';
+import PondActivities from '../components/PondActivities';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,12 +14,13 @@ import {
   ActivityIndicator,
   Platform,
   Linking,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { usePondHistory, usePonds } from '../hooks/useOfflineData';
+import { usePondHistory, usePonds, useUpdatePond } from '../hooks/useOfflineData';
 
 type PondFilter = 'all' | 'active' | 'inactive';
 
@@ -187,11 +191,31 @@ function getPricePerKgPhp(species: string): number {
 }
 
 export default function PondsScreen() {
+  const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+  const { user } = useAuth();
+  const updatePond = useUpdatePond();
+  const [editingName, setEditingName] = useState<string | null>(null);
+  const [savingPond, setSavingPond] = useState(false);
+  const savePondLock = useRef(false);
   const { ponds, loading } = usePonds();
   const [filter, setFilter] = useState<PondFilter>('all');
   const [query, setQuery] = useState('');
   const [viewMode, setViewMode] = useState<PondsViewMode>('list');
   const [selectedPondId, setSelectedPondId] = useState<string | null>(null);
+  useEffect(() => { if (route.params?.pondId) setSelectedPondId(route.params.pondId); }, [route.params?.pondId, route.params?.requestKey]);
+  const savePondChanges = async (changes: { name?: string; isActive?: boolean }) => {
+    if (!selectedPondId || !user || savePondLock.current) return;
+    savePondLock.current = true; setSavingPond(true);
+    try { await updatePond(selectedPondId, changes, user.id); setEditingName(null); Alert.alert('Saved', 'Pond changes saved locally and queued for synchronization.'); }
+    catch { Alert.alert('Unable to save', 'Please try saving your pond again.'); }
+    finally { savePondLock.current = false; setSavingPond(false); }
+  };
+  const openPondRecords = (type?: string) => {
+    setSelectedPondId(null);
+    navigation.navigate('RecordsWorkspace', { pondId: selectedPondId, initialType: type, initialSegment: type ? 'log' : 'recent', requestKey: Date.now() });
+  };
+  useEffect(() => { setEditingName(null); }, [selectedPondId]);
   const [userLocation, setUserLocation] = useState<ParsedLocation | null>(null);
   const [locatingUser, setLocatingUser] = useState(false);
   const [pondAlertSettings, setPondAlertSettings] = useState<Record<string, PondAlertSettings>>({});
@@ -425,108 +449,6 @@ export default function PondsScreen() {
     </View>
   );
 
-  const parsedTimeline = useMemo(() => {
-    return pondHistory.slice(0, 12).map((event: any) => {
-      const data = parseEventData(event.eventData);
-
-      if (event.eventType === 'stocking') {
-        return {
-          id: event.id,
-          icon: 'add-circle-outline',
-          color: '#16a34a',
-          title: 'Stocking',
-          subtitle: `${data.quantity ? `${data.quantity.toLocaleString()} fish` : 'Quantity unknown'}${data.species ? ` • ${data.species}` : ''}`,
-          date: formatDate(event.createdAt),
-        };
-      }
-
-      if (event.eventType === 'harvest') {
-        return {
-          id: event.id,
-          icon: 'basket-outline',
-          color: '#f59e0b',
-          title: 'Harvest',
-          subtitle: `${data.yieldKg ? `${data.yieldKg} kg` : 'Yield logged'}${data.isPartial ? ' • Partial' : ' • Full'}`,
-          date: formatDate(event.createdAt),
-        };
-      }
-
-      if (event.eventType === 'mortality') {
-        return {
-          id: event.id,
-          icon: 'warning-outline',
-          color: '#dc2626',
-          title: 'Mortality',
-          subtitle: `${data.quantity ? `${data.quantity} fish` : 'Mortality logged'}`,
-          date: formatDate(event.createdAt),
-        };
-      }
-
-      if (event.eventType === 'feeding') {
-        return {
-          id: event.id,
-          icon: 'restaurant-outline',
-          color: '#ea580c',
-          title: 'Feeding',
-          subtitle: `${data.quantity ? `${data.quantity} kg` : 'Feeding event recorded'}`,
-          date: formatDate(event.createdAt),
-        };
-      }
-
-      if (event.eventType === 'sampling') {
-        return {
-          id: event.id,
-          icon: 'flask-outline',
-          color: '#7c3aed',
-          title: 'Sampling',
-          subtitle: `${data.quantity ? `${data.quantity} g` : 'Sampling event recorded'}`,
-          date: formatDate(event.createdAt),
-        };
-      }
-
-      if (event.eventType === 'treatment') {
-        return {
-          id: event.id,
-          icon: 'medical-outline',
-          color: '#0891b2',
-          title: 'Treatment',
-          subtitle: `${data.quantity ? `${data.quantity} dose` : 'Treatment event recorded'}`,
-          date: formatDate(event.createdAt),
-        };
-      }
-
-      if (event.eventType === 'water_quality') {
-        return {
-          id: event.id,
-          icon: 'water-outline',
-          color: '#0369a1',
-          title: 'Water Quality',
-          subtitle: `${data.quantity ? `pH ${data.quantity}` : 'Water quality check recorded'}`,
-          date: formatDate(event.createdAt),
-        };
-      }
-
-      if (event.eventType === 'expense') {
-        return {
-          id: event.id,
-          icon: 'cash-outline',
-          color: '#7e22ce',
-          title: 'Expense',
-          subtitle: `${data.quantity ? formatCurrencyPhp(Number(data.quantity)) : 'Expense recorded'}`,
-          date: formatDate(event.createdAt),
-        };
-      }
-
-      return {
-        id: event.id,
-        icon: 'list-outline',
-        color: '#4b5563',
-        title: event.eventType || 'Activity',
-        subtitle: 'Activity recorded',
-        date: formatDate(event.createdAt),
-      };
-    });
-  }, [pondHistory]);
 
   const pondKpis = useMemo((): PondKpis | null => {
     if (!selectedPond) return null;
@@ -910,6 +832,18 @@ export default function PondsScreen() {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                <TouchableOpacity style={{ padding: 12, backgroundColor: '#e3f2fd', borderRadius: 12 }} onPress={() => setEditingName(selectedPond?.name || '')}><Text>Edit Pond</Text></TouchableOpacity>
+                <TouchableOpacity style={{ padding: 12, backgroundColor: '#e3f2fd', borderRadius: 12 }} onPress={() => { const id = selectedPondId; setSelectedPondId(null); navigation.navigate('PondMap', { pondId: id, requestKey: Date.now() }); }}><Text>View Map / Edit Mapping</Text></TouchableOpacity>
+                {['stocking', 'mortality', 'harvest'].map(type => <TouchableOpacity key={type} style={{ padding: 12, backgroundColor: '#e3f2fd', borderRadius: 12 }} onPress={() => openPondRecords(type)}><Text>Add {type[0].toUpperCase() + type.slice(1)}</Text></TouchableOpacity>)}
+                <TouchableOpacity style={{ padding: 12 }} onPress={() => openPondRecords()}><Text>View Records</Text></TouchableOpacity>
+
+              </View>
+              {editingName !== null && <View style={{ gap: 8, marginBottom: 16 }}>
+                <TextInput accessibilityLabel="Pond name" value={editingName} onChangeText={setEditingName} editable={!savingPond} style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 12 }} />
+                <TouchableOpacity style={{ padding: 12 }} disabled={savingPond || !editingName.trim() || editingName.trim() === selectedPond?.name} onPress={() => savePondChanges({ name: editingName.trim() })}><Text>{savingPond ? 'Saving...' : 'Save Changes'}</Text></TouchableOpacity>
+                <TouchableOpacity style={{ padding: 12 }} disabled={savingPond} onPress={() => setEditingName(null)}><Text>Cancel</Text></TouchableOpacity>
+              </View>}
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>Status</Text>
                 <Text style={styles.detailValue}>{selectedPond?.isActive ? 'Active' : 'Inactive'}</Text>
@@ -997,30 +931,7 @@ export default function PondsScreen() {
               <Text style={styles.sectionHeading}>Smart Alerts</Text>
               {smartAlerts.map(renderAlertCard)}
 
-              <Text style={styles.sectionHeading}>Timeline</Text>
-              {pondHistoryLoading ? (
-                <View style={styles.timelineLoading}>
-                  <ActivityIndicator size="small" color="#007bff" />
-                  <Text style={styles.timelineLoadingText}>Loading timeline...</Text>
-                </View>
-              ) : parsedTimeline.length === 0 ? (
-                <Text style={styles.emptyTimelineText}>No timeline events yet for this pond.</Text>
-              ) : (
-                <View style={styles.timelineList}>
-                  {parsedTimeline.map((event) => (
-                    <View key={event.id} style={styles.timelineItem}>
-                      <View style={[styles.timelineIconWrap, { backgroundColor: `${event.color}20` }]}>
-                        <Ionicons name={event.icon as any} size={16} color={event.color} />
-                      </View>
-                      <View style={styles.timelineContent}>
-                        <Text style={styles.timelineTitle}>{event.title}</Text>
-                        <Text style={styles.timelineSubtitle}>{event.subtitle}</Text>
-                      </View>
-                      <Text style={styles.timelineDate}>{event.date}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
+              {selectedPond && <PondActivities key={selectedPond.id} pondId={selectedPond.id} name={selectedPond.name} history={pondHistory} />}
             </ScrollView>
           </View>
         </View>

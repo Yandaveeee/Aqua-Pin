@@ -17,6 +17,7 @@ coverage/
 test-results/
 *.apk
 .worktrees/
+supabase/.temp/
 
 # Expo / React Native
 expo-env.d.ts

@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from './network';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import { CONFIG, getMissingConfigVars } from '../config';
@@ -12,6 +13,7 @@ const supabaseHost = new URL(supabaseUrl).hostname;
 export const SUPABASE_AUTH_STORAGE_KEY = `sb-${supabaseHost.split('.')[0]}-auth-token`;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  global: { fetch: fetchWithTimeout },
   auth: {
     storage: AsyncStorage,
     storageKey: SUPABASE_AUTH_STORAGE_KEY,

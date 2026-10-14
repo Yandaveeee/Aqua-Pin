@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { LANGUAGES, Language, useLanguage } from '../../contexts/LanguageContext';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -35,7 +36,6 @@ import {
 } from '../../lib/reporting';
 import { aquapinColors, formatRelativeTime, formatWholeNumber } from '../../theme/aquapin';
 
-type Language = 'en' | 'fil';
 type WeightUnit = 'kg' | 'g';
 type FishCountFormat = 'full' | 'compact';
 type ReportAction = 'csv' | 'pdf';
@@ -139,8 +139,14 @@ function buildMailTo(subject: string, body: string): string {
 }
 
 export default function ProfileOverviewScreen() {
+  const { t, applyLanguage } = useLanguage();
+  const savePreferencesLock = useRef(false);
+  const [preferencesReady, setPreferencesReady] = useState(false);
+  const [savingPreferences, setSavingPreferences] = useState(false);
+  const [savedPreferences, setSavedPreferences] = useState(DEFAULT_PREFERENCES);
+  const [draftAppearance, setDraftAppearance] = useState<'light' | 'dark'>('light');
   const { user, signOut } = useAuth();
-  const { appearanceMode, setAppearanceMode } = useAppearance();
+  const { appearanceMode, setAppearanceMode, isDarkMode } = useAppearance();
   const overview = useFarmOverview();
   const { ponds } = usePonds();
   const {
@@ -152,6 +158,9 @@ export default function ProfileOverviewScreen() {
     performSync,
   } = useSync();
 
+  const [profileName, setProfileName] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const profileLock = useRef(false);
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<NotificationSettings>(DEFAULT_NOTIFICATIONS);
   const [pondAlerts, setPondAlerts] = useState<Record<string, PondAlertSettings>>({});
@@ -172,9 +181,20 @@ export default function ProfileOverviewScreen() {
   const [faqQuery, setFaqQuery] = useState('');
   const [feedbackText, setFeedbackText] = useState('');
 
-  const compactCount = preferences.fishCountFormat === 'compact';
+  const saveProfile = async () => {
+    const name = profileName.trim();
+    if (!name || name.length > 100 || profileLock.current) return;
+    profileLock.current = true; setSavingProfile(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ data: { full_name: name } });
+      if (error) throw error;
+      Alert.alert('Profile saved', 'Your display name has been updated.');
+    } catch { Alert.alert('Unable to save profile', 'Check your internet connection and try again.'); }
+    finally { profileLock.current = false; setSavingProfile(false); }
+  };
+  const compactCount = savedPreferences.fishCountFormat === 'compact';
   const pendingTotal = pendingChanges.ponds + pendingChanges.entries;
-  const appLanguageLabel = preferences.language === 'fil' ? 'Tagalog' : 'English';
+  const appLanguageLabel = savedPreferences.language === 'fil' ? 'Filipino' : 'English';
   const appearanceLabel = appearanceMode === 'dark' ? 'Dark Mode' : 'Light Mode';
   const loadingCopy = reportAction ? 'Preparing report...' : 'Processing action...';
 
@@ -260,8 +280,19 @@ export default function ProfileOverviewScreen() {
         if (pondAlertsRaw) setPondAlerts(JSON.parse(pondAlertsRaw));
         if (securityRaw) setSecurity({ ...DEFAULT_SECURITY, ...JSON.parse(securityRaw) });
         if (pinRaw) setPinCode(pinRaw);
-        if (prefsRaw) setPreferences({ ...DEFAULT_PREFERENCES, ...JSON.parse(prefsRaw) });
+        if (prefsRaw) {
+          const parsed = JSON.parse(prefsRaw);
+          const prefs: PreferenceSettings = {
+            language: LANGUAGES.some(item => item.code === parsed?.language) ? parsed.language : 'en',
+            weightUnit: parsed?.weightUnit === 'g' ? 'g' : 'kg',
+            fishCountFormat: parsed?.fishCountFormat === 'compact' ? 'compact' : 'full',
+          };
+          setPreferences(prefs); setSavedPreferences(prefs);
+        }
         if (logsRaw) setRecentLogs(JSON.parse(logsRaw));
+        setPreferencesReady(true);
+      } catch (error) {
+        Alert.alert('Preferences', 'Unable to load saved settings. Please reopen this screen.');
       } finally {
         if (mounted) setHydrated(true);
       }
@@ -289,10 +320,22 @@ export default function ProfileOverviewScreen() {
     void AsyncStorage.setItem(PROFILE_SECURITY_KEY, JSON.stringify(security));
   }, [hydrated, security]);
 
-  useEffect(() => {
-    if (!hydrated) return;
-    void AsyncStorage.setItem(PROFILE_PREFS_KEY, JSON.stringify(preferences));
-  }, [hydrated, preferences]);
+  const preferencesChanged = JSON.stringify(preferences) !== JSON.stringify(savedPreferences) || draftAppearance !== appearanceMode;
+  const savePreferences = async () => {
+    if (!preferencesReady || !preferencesChanged || savePreferencesLock.current) return;
+    savePreferencesLock.current = true;
+    setSavingPreferences(true);
+    const next = { ...preferences };
+    try {
+      await AsyncStorage.multiSet([[PROFILE_PREFS_KEY, JSON.stringify(next)], ['@aquapin_app_appearance', draftAppearance]]);
+      await setAppearanceMode(draftAppearance, false);
+      setSavedPreferences(next);
+      applyLanguage(next.language);
+      Alert.alert('AquaPin', next.language === 'fil' ? 'Na-save ang mga kagustuhan.' : 'Preferences saved.');
+    } catch (error) {
+      Alert.alert('Unable to save', 'Please try saving your preferences again.');
+    } finally { savePreferencesLock.current = false; setSavingPreferences(false); }
+  };
 
   useEffect(() => {
     if (!hydrated) return;
@@ -315,6 +358,8 @@ export default function ProfileOverviewScreen() {
   }, [hydrated, ponds]);
 
   const closeModal = () => {
+    if (savePreferencesLock.current || profileLock.current) return;
+    if (activeModal === 'preferences') setPreferences(savedPreferences);
     setActiveModal(null);
     setReportAction(null);
     setCurrentPassword('');
@@ -727,26 +772,54 @@ export default function ProfileOverviewScreen() {
     tone?: 'blue' | 'green' | 'red' | 'amber' | 'teal';
     onPress: () => void;
     trailing?: keyof typeof Ionicons.glyphMap;
+    trailingText?: string;
   }) => {
     const toneMap = {
-      blue: { bg: aquapinColors.blueSoft, fg: aquapinColors.blue },
-      green: { bg: aquapinColors.greenSoft, fg: aquapinColors.green },
-      red: { bg: aquapinColors.redSoft, fg: aquapinColors.red },
-      amber: { bg: aquapinColors.amberSoft, fg: aquapinColors.amber },
-      teal: { bg: aquapinColors.tealSoft, fg: aquapinColors.teal },
+      blue: { bg: isDarkMode ? 'rgba(56, 189, 248, 0.15)' : aquapinColors.blueSoft, fg: isDarkMode ? '#38bdf8' : aquapinColors.blue },
+      green: { bg: isDarkMode ? 'rgba(16, 185, 129, 0.15)' : aquapinColors.greenSoft, fg: isDarkMode ? '#34d399' : aquapinColors.green },
+      red: { bg: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : aquapinColors.redSoft, fg: isDarkMode ? '#f87171' : aquapinColors.red },
+      amber: { bg: isDarkMode ? 'rgba(245, 158, 11, 0.15)' : aquapinColors.amberSoft, fg: isDarkMode ? '#fbbf24' : aquapinColors.amber },
+      teal: { bg: isDarkMode ? 'rgba(20, 184, 166, 0.15)' : aquapinColors.tealSoft, fg: isDarkMode ? '#2dd4bf' : aquapinColors.teal },
     };
     const tone = toneMap[item.tone || 'blue'];
 
     return (
-      <TouchableOpacity key={item.title} style={styles.actionRow} activeOpacity={0.9} onPress={item.onPress}>
+      <TouchableOpacity
+        key={item.title}
+        style={[
+          styles.actionRow,
+          {
+            backgroundColor: isDarkMode ? 'rgba(15, 27, 44, 0.85)' : 'rgba(255, 255, 255, 0.88)',
+            borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.10)' : 'rgba(255, 255, 255, 0.95)',
+          },
+        ]}
+        activeOpacity={0.88}
+        onPress={item.onPress}
+      >
         <View style={[styles.actionIcon, { backgroundColor: tone.bg }]}>
           <Ionicons name={item.icon} size={20} color={tone.fg} />
         </View>
         <View style={styles.actionCopy}>
-          <Text style={styles.actionTitle}>{item.title}</Text>
-          {item.subtitle ? <Text style={styles.actionSubtitle}>{item.subtitle}</Text> : null}
+          <Text style={[styles.actionTitle, { color: isDarkMode ? '#f8fafc' : aquapinColors.text }]}>
+            {item.title}
+          </Text>
+          {item.subtitle ? (
+            <Text style={[styles.actionSubtitle, { color: isDarkMode ? '#94a7bc' : aquapinColors.textMuted }]}>
+              {item.subtitle}
+            </Text>
+          ) : null}
         </View>
-        <Ionicons name={item.trailing || 'chevron-forward'} size={18} color={aquapinColors.textMuted} />
+        {item.trailingText ? (
+          <View style={[styles.versionPill, { backgroundColor: tone.bg }]}>
+            <Text style={[styles.versionPillText, { color: tone.fg }]}>{item.trailingText}</Text>
+          </View>
+        ) : (
+          <Ionicons
+            name={item.trailing || 'chevron-forward'}
+            size={18}
+            color={isDarkMode ? '#64748b' : aquapinColors.textMuted}
+          />
+        )}
       </TouchableOpacity>
     );
   };
@@ -789,7 +862,7 @@ export default function ProfileOverviewScreen() {
     </Modal>
   );
 
-  const renderProfileModal = () => renderSheet('profile', 'User Profile', (
+  const renderProfileModal = () => renderSheet('profile', 'Edit Profile', (
     <ScrollView contentContainerStyle={styles.modalScroll}>
       <View style={styles.profileModalCard}>
         <View style={styles.profileModalAvatar}>
@@ -802,6 +875,9 @@ export default function ProfileOverviewScreen() {
         </Text>
       </View>
 
+      <Text style={styles.modalSectionTitle}>Display Name</Text>
+      <TextInput accessibilityLabel="Display name" value={profileName} onChangeText={setProfileName} maxLength={100} editable={!savingProfile} style={{ borderWidth: 1, borderColor: '#dbe5ef', padding: 12, borderRadius: 12 }} />
+      <TouchableOpacity style={[styles.primaryInlineButton, (!profileName.trim() || savingProfile || profileName.trim() === user?.user_metadata?.full_name) && { opacity: 0.5 }]} disabled={!profileName.trim() || savingProfile || profileName.trim() === user?.user_metadata?.full_name} onPress={saveProfile}><Text style={styles.primaryInlineButtonText}>{savingProfile ? 'Saving...' : 'Save Profile'}</Text></TouchableOpacity>
       <View style={styles.summaryGrid}>
         <View style={styles.summaryCard}>
           <Text style={styles.summaryValue}>{formatCount(farmStats.total, compactCount)}</Text>
@@ -915,18 +991,17 @@ export default function ProfileOverviewScreen() {
     </View>
   ));
 
-  const renderPreferencesModal = () => renderSheet('preferences', 'Account Preferences', (
-    <ScrollView contentContainerStyle={styles.modalScroll}>
+  const renderPreferencesModal = () => renderSheet('preferences', t('Account Preferences'), (
+    <ScrollView contentContainerStyle={styles.modalScroll}><View pointerEvents={savingPreferences ? 'none' : 'auto'}>
       <Text style={styles.modalSectionTitle}>Appearance</Text>
       <View style={styles.chipRow}>
-        {renderChoiceChip('Light Mode', appearanceMode === 'light', () => setAppearanceMode('light'))}
-        {renderChoiceChip('Dark Mode', appearanceMode === 'dark', () => setAppearanceMode('dark'))}
+        {renderChoiceChip('Light Mode', draftAppearance === 'light', () => setDraftAppearance('light'))}
+        {renderChoiceChip('Dark Mode', draftAppearance === 'dark', () => setDraftAppearance('dark'))}
       </View>
 
-      <Text style={styles.modalSectionTitle}>Language</Text>
+      <Text style={styles.modalSectionTitle}>{t('Language')}</Text>
       <View style={styles.chipRow}>
-        {renderChoiceChip('English', preferences.language === 'en', () => setPreferences((prev) => ({ ...prev, language: 'en' })))}
-        {renderChoiceChip('Tagalog', preferences.language === 'fil', () => setPreferences((prev) => ({ ...prev, language: 'fil' })))}
+        {LANGUAGES.map(item => <React.Fragment key={item.code}>{renderChoiceChip(item.label, preferences.language === item.code, () => setPreferences(prev => ({ ...prev, language: item.code })))}</React.Fragment>)}
       </View>
 
       <Text style={styles.modalSectionTitle}>Weight Unit</Text>
@@ -940,6 +1015,10 @@ export default function ProfileOverviewScreen() {
         {renderChoiceChip('Full Number', preferences.fishCountFormat === 'full', () => setPreferences((prev) => ({ ...prev, fishCountFormat: 'full' })))}
         {renderChoiceChip('Compact', preferences.fishCountFormat === 'compact', () => setPreferences((prev) => ({ ...prev, fishCountFormat: 'compact' })))}
       </View>
+      </View><TouchableOpacity accessibilityRole="button" disabled={!preferencesReady || !preferencesChanged || savingPreferences}
+        style={[styles.primaryInlineButton, (!preferencesChanged || savingPreferences) && { opacity: 0.5 }]} onPress={savePreferences}>
+        <Text style={styles.primaryInlineButtonText}>{t(savingPreferences ? 'Saving...' : 'Save Changes')}</Text>
+      </TouchableOpacity>
     </ScrollView>
   ));
 
@@ -1015,31 +1094,17 @@ export default function ProfileOverviewScreen() {
   const settingsCards = [
     {
       key: 'profile',
-      title: 'User Profile',
-      subtitle: 'Identity, role, farm stats, and account summary.',
+      title: 'Edit Profile',
+      subtitle: 'Identity, role, and staff profile info.',
       icon: 'person-circle-outline' as const,
-      onPress: () => setActiveModal('profile'),
-    },
-    {
-      key: 'notifications',
-      title: 'Notification Settings',
-      subtitle: 'Harvest reminders, mortality alerts, sync notifications.',
-      icon: 'notifications-outline' as const,
-      onPress: () => setActiveModal('notifications'),
-    },
-    {
-      key: 'security',
-      title: 'Security Settings',
-      subtitle: 'Biometrics, PIN lock, and password updates.',
-      icon: 'shield-checkmark-outline' as const,
-      onPress: () => setActiveModal('security'),
+      onPress: () => { setProfileName(user?.user_metadata?.full_name || ''); setActiveModal('profile'); },
     },
     {
       key: 'preferences',
-      title: 'Account Preferences',
+      title: t('Preferences'),
       subtitle: 'Language, appearance, units, and count format.',
       icon: 'settings-outline' as const,
-      onPress: () => setActiveModal('preferences'),
+      onPress: () => { setPreferences(savedPreferences); setDraftAppearance(appearanceMode); setActiveModal('preferences'); },
     },
   ];
 
@@ -1058,20 +1123,51 @@ export default function ProfileOverviewScreen() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <View style={styles.headerCopy}>
-            <Text style={styles.eyebrow}>Aquapin 2.0</Text>
-            <Text style={styles.title}>Profile</Text>
-            <Text style={styles.subtitle}>{user?.email || 'Field staff account'}</Text>
+            <Text style={[styles.title, { color: isDarkMode ? '#f8fafc' : aquapinColors.text }]}>Profile</Text>
+            <Text style={[styles.subtitle, { color: isDarkMode ? '#94a7bc' : aquapinColors.textMuted }]}>
+              Farm staff account & system preferences
+            </Text>
           </View>
-          <TouchableOpacity style={styles.avatarBadge} activeOpacity={0.9} onPress={() => setActiveModal('profile')}>
-            <Text style={styles.avatarInitial}>{user?.email?.charAt(0).toUpperCase() || '?'}</Text>
+          <TouchableOpacity
+            style={[
+              styles.avatarBadge,
+              {
+                backgroundColor: isDarkMode ? 'rgba(15, 27, 44, 0.9)' : aquapinColors.surface,
+                borderColor: isDarkMode ? 'rgba(56, 189, 248, 0.3)' : 'rgba(2, 132, 199, 0.18)',
+              },
+            ]}
+            activeOpacity={0.88}
+            onPress={() => {
+              setProfileName(user?.user_metadata?.full_name || '');
+              setActiveModal('profile');
+            }}
+          >
+            <Text style={[styles.avatarInitial, { color: isDarkMode ? '#38bdf8' : aquapinColors.blue }]}>
+              {(user?.user_metadata?.full_name || user?.email || '?').charAt(0).toUpperCase()}
+            </Text>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.heroCard}>
+        <View
+          style={[
+            styles.heroCard,
+            {
+              backgroundColor: isDarkMode ? 'rgba(15, 27, 44, 0.88)' : 'rgba(255, 255, 255, 0.88)',
+              borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.95)',
+            },
+          ]}
+        >
           <View style={styles.heroTop}>
             <View style={styles.heroNameBlock}>
-              <Text style={styles.heroName} numberOfLines={1}>{user?.email || 'Aquapin user'}</Text>
-              <Text style={styles.heroRole}>Field staff workspace</Text>
+              <Text
+                style={[styles.heroName, { color: isDarkMode ? '#f8fafc' : aquapinColors.text }]}
+                numberOfLines={1}
+              >
+                {user?.user_metadata?.full_name || user?.email || 'Field Staff'}
+              </Text>
+              <Text style={[styles.heroRole, { color: isDarkMode ? '#94a7bc' : aquapinColors.textMuted }]}>
+                {user?.email || 'Field staff account'}
+              </Text>
             </View>
             <View style={[styles.statusBadge, isOnline ? styles.statusBadgeOnline : styles.statusBadgeOffline]}>
               <Text style={[styles.statusBadgeText, isOnline ? styles.statusBadgeTextOnline : styles.statusBadgeTextOffline]}>
@@ -1081,80 +1177,142 @@ export default function ProfileOverviewScreen() {
           </View>
 
           <View style={styles.heroStats}>
-            <View style={styles.heroStat}>
-              <Text style={styles.heroStatValue}>{formatCount(overview.totalPonds, compactCount)}</Text>
-              <Text style={styles.heroStatLabel}>Managed ponds</Text>
+            <View
+              style={[
+                styles.heroStat,
+                {
+                  backgroundColor: isDarkMode ? 'rgba(10, 20, 34, 0.65)' : 'rgba(240, 246, 253, 0.85)',
+                  borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(215, 230, 245, 0.7)',
+                },
+              ]}
+            >
+              <Text style={[styles.heroStatValue, { color: isDarkMode ? '#f8fafc' : aquapinColors.text }]}>
+                {formatCount(overview.totalPonds, compactCount)}
+              </Text>
+              <Text style={[styles.heroStatLabel, { color: isDarkMode ? '#94a7bc' : aquapinColors.textMuted }]}>
+                Managed ponds
+              </Text>
             </View>
-            <View style={styles.heroStat}>
-              <Text style={styles.heroStatValue}>{formatWholeNumber(queueSnapshot.pending)}</Text>
-              <Text style={styles.heroStatLabel}>Sync queue</Text>
+            <View
+              style={[
+                styles.heroStat,
+                {
+                  backgroundColor: isDarkMode ? 'rgba(10, 20, 34, 0.65)' : 'rgba(240, 246, 253, 0.85)',
+                  borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(215, 230, 245, 0.7)',
+                },
+              ]}
+            >
+              <Text style={[styles.heroStatValue, { color: isDarkMode ? '#f8fafc' : aquapinColors.text }]}>
+                {formatWholeNumber(queueSnapshot.pending)}
+              </Text>
+              <Text style={[styles.heroStatLabel, { color: isDarkMode ? '#94a7bc' : aquapinColors.textMuted }]}>
+                Sync queue
+              </Text>
             </View>
-            <View style={styles.heroStat}>
-              <Text style={styles.heroStatValue}>{formatCount(overview.activePonds, compactCount)}</Text>
-              <Text style={styles.heroStatLabel}>Active ponds</Text>
+            <View
+              style={[
+                styles.heroStat,
+                {
+                  backgroundColor: isDarkMode ? 'rgba(10, 20, 34, 0.65)' : 'rgba(240, 246, 253, 0.85)',
+                  borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(215, 230, 245, 0.7)',
+                },
+              ]}
+            >
+              <Text style={[styles.heroStatValue, { color: isDarkMode ? '#f8fafc' : aquapinColors.text }]}>
+                {formatCount(overview.activePonds, compactCount)}
+              </Text>
+              <Text style={[styles.heroStatLabel, { color: isDarkMode ? '#94a7bc' : aquapinColors.textMuted }]}>
+                Active ponds
+              </Text>
             </View>
           </View>
         </View>
 
         <View style={styles.sectionHeadRow}>
-          <Text style={styles.sectionTitle}>System Status</Text>
-          <TouchableOpacity style={styles.linkButton} onPress={handleSyncNow} disabled={isSyncing}>
-            {isSyncing ? <ActivityIndicator size="small" color={aquapinColors.blue} /> : <Text style={styles.linkText}>Sync Now</Text>}
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.statusGrid}>
-          <View style={styles.statusCard}>
-            <Text style={styles.statusLabel}>Last Sync</Text>
-            <Text style={styles.statusValue}>{lastSync ? formatRelativeTime(lastSync.getTime()) : 'Not yet synced'}</Text>
-            <Text style={styles.statusHint}>Cloud and offline queue state</Text>
-          </View>
-          <View style={styles.statusCard}>
-            <Text style={styles.statusLabel}>Recent Activity</Text>
-            <Text style={styles.statusValue}>{formatRelativeTime(overview.latestActivityAt)}</Text>
-            <Text style={styles.statusHint}>Latest farm action recorded locally</Text>
-          </View>
-        </View>
-
-        <View style={styles.sectionHeadRow}>
-          <Text style={styles.sectionTitle}>Profile & Settings</Text>
-          <Text style={styles.sectionMeta}>Integrated</Text>
+          <Text style={[styles.sectionTitle, { color: isDarkMode ? '#f8fafc' : aquapinColors.text }]}>
+            Profile & Settings
+          </Text>
         </View>
 
         <View style={styles.cardGrid}>
           {settingsCards.map((card) => (
-            <TouchableOpacity key={card.key} style={styles.settingsCard} activeOpacity={0.92} onPress={card.onPress}>
-              <View style={styles.settingsIcon}>
-                <Ionicons name={card.icon} size={20} color={aquapinColors.blue} />
+            <TouchableOpacity
+              key={card.key}
+              style={[
+                styles.settingsCard,
+                {
+                  backgroundColor: isDarkMode ? 'rgba(15, 27, 44, 0.85)' : 'rgba(255, 255, 255, 0.88)',
+                  borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.10)' : 'rgba(255, 255, 255, 0.95)',
+                },
+              ]}
+              activeOpacity={0.88}
+              onPress={card.onPress}
+            >
+              <View
+                style={[
+                  styles.settingsIcon,
+                  {
+                    backgroundColor: isDarkMode ? 'rgba(56, 189, 248, 0.14)' : aquapinColors.blueSoft,
+                  },
+                ]}
+              >
+                <Ionicons name={card.icon} size={20} color={isDarkMode ? '#38bdf8' : aquapinColors.blue} />
               </View>
-              <Text style={styles.settingsTitle}>{card.title}</Text>
-              <Text style={styles.settingsSubtitle}>{card.subtitle}</Text>
+              <Text style={[styles.settingsTitle, { color: isDarkMode ? '#f8fafc' : aquapinColors.text }]}>
+                {card.title}
+              </Text>
+              <Text style={[styles.settingsSubtitle, { color: isDarkMode ? '#94a7bc' : aquapinColors.textMuted }]}>
+                {card.subtitle}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
 
         <View style={styles.sectionHeadRow}>
-          <Text style={styles.sectionTitle}>Data Tools</Text>
-          <Text style={styles.sectionMeta}>Export & backup</Text>
+          <Text style={[styles.sectionTitle, { color: isDarkMode ? '#f8fafc' : aquapinColors.text }]}>
+            Data Tools
+          </Text>
         </View>
 
         <View style={styles.actionList}>
-          {renderActionRow({ title: 'Export CSV', subtitle: 'Generate operations spreadsheet.', icon: 'document-text-outline', tone: 'blue', trailing: 'share-social-outline', onPress: () => openReportRangePicker('csv') })}
-          {renderActionRow({ title: 'Export PDF Summary', subtitle: 'Generate a printable operations report.', icon: 'document-outline', tone: 'teal', trailing: 'share-social-outline', onPress: () => openReportRangePicker('pdf') })}
-          {renderActionRow({ title: 'Share Report', subtitle: 'Share a text operations summary.', icon: 'share-outline', tone: 'green', trailing: 'share-social-outline', onPress: shareReportSummary })}
-          {renderActionRow({ title: 'Create Backup', subtitle: 'Save local offline records snapshot.', icon: 'save-outline', tone: 'amber', onPress: createBackup })}
-          {renderActionRow({ title: 'Restore Backup', subtitle: 'Restore the last local backup.', icon: 'refresh-outline', tone: 'teal', onPress: restoreBackup })}
+          {renderActionRow({
+            title: 'Export PDF',
+            subtitle: 'Generate and share printable operations report.',
+            icon: 'document-text-outline',
+            tone: 'teal',
+            trailing: 'chevron-forward',
+            onPress: () => openReportRangePicker('pdf'),
+          })}
         </View>
 
         <View style={styles.sectionHeadRow}>
-          <Text style={styles.sectionTitle}>Help & Account</Text>
-          <Text style={styles.sectionMeta}>Support</Text>
+          <Text style={[styles.sectionTitle, { color: isDarkMode ? '#f8fafc' : aquapinColors.text }]}>
+            Help & Account
+          </Text>
         </View>
 
         <View style={styles.actionList}>
-          {renderActionRow({ title: 'Search FAQ & Report Issue', subtitle: 'Open help center and send logs.', icon: 'help-circle-outline', tone: 'amber', onPress: () => setActiveModal('help') })}
-          {renderActionRow({ title: 'Deactivate Account', subtitle: 'Mark the account deactivated and sign out.', icon: 'pause-circle-outline', tone: 'red', onPress: handleDeactivateAccount })}
-          {renderActionRow({ title: 'Delete Account', subtitle: 'Clear local data and request account deletion.', icon: 'trash-outline', tone: 'red', onPress: handleDeleteAccount })}
+          {renderActionRow({
+            title: 'Search FAQ & Report Issue',
+            subtitle: 'Open help center and send feedback.',
+            icon: 'help-circle-outline',
+            tone: 'amber',
+            trailing: 'chevron-forward',
+            onPress: () => setActiveModal('help'),
+          })}
+          {renderActionRow({
+            title: 'App Version',
+            subtitle: 'AquaPin Mobile • Build 2.0.0',
+            icon: 'information-circle-outline',
+            tone: 'blue',
+            trailingText: 'v2.0.0',
+            onPress: () =>
+              Alert.alert(
+                'AquaPin Mobile',
+                'Version 2.0.0 (Production Build)\n\n• Offline WatermelonDB sync engine active\n• AES-256 local database storage\n• Real-time cloud replication\n\nAll systems operational.',
+                [{ text: 'OK', style: 'default' }]
+              ),
+          })}
         </View>
 
         {actionLoading ? (
@@ -1164,12 +1322,10 @@ export default function ProfileOverviewScreen() {
           </View>
         ) : null}
 
-        <TouchableOpacity style={styles.signOutButton} activeOpacity={0.92} onPress={handleSignOut}>
+        <TouchableOpacity style={styles.signOutButton} activeOpacity={0.88} onPress={handleSignOut}>
           <Ionicons name="log-out-outline" size={18} color="#fff" />
           <Text style={styles.signOutButtonText}>Sign Out</Text>
         </TouchableOpacity>
-
-        <Text style={styles.version}>Version 2.0.0</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -1393,10 +1549,17 @@ const styles = StyleSheet.create({
   actionRow: {
     backgroundColor: aquapinColors.surface,
     borderRadius: 22,
+    borderWidth: 1.2,
+    borderColor: 'rgba(255, 255, 255, 0.92)',
     padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    shadowColor: '#16335c',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   actionIcon: {
     width: 42,
@@ -1418,6 +1581,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     marginTop: 3,
+  },
+  versionPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  versionPillText: {
+    fontSize: 12,
+    fontWeight: '800',
   },
   loadingBanner: {
     backgroundColor: aquapinColors.blueSoft,

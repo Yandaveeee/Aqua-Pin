@@ -171,6 +171,9 @@ class MockDatabase {
             species: undefined,
             isPartial: false,
             fishCount: undefined,
+            pricePerKg: undefined,
+            totalRevenue: undefined,
+            isSold: true,
           };
           fn(harvest);
           await this.set(`harvest:${id}`, harvest);
@@ -241,7 +244,7 @@ export async function clearLocalDatabase(): Promise<void> {
   }
 
   const keys = await AsyncStorage.getAllKeys();
-  const appKeys = keys.filter((key) => key.startsWith(LOCAL_DB_STORAGE_PREFIX));
+  const appKeys = keys.filter((key) => key.startsWith(LOCAL_DB_STORAGE_PREFIX) || key.startsWith('@aquapin_pond_edit:'));
   if (appKeys.length > 0) {
     await AsyncStorage.multiRemove(appKeys);
   }

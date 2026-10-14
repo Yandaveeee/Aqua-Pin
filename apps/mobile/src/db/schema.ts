@@ -36,6 +36,9 @@ export const schema = appSchema({
         { name: 'species', type: 'string', isOptional: true }, // Species harvested
         { name: 'is_partial', type: 'boolean' }, // Partial or full harvest
         { name: 'fish_count', type: 'number', isOptional: true }, // Number of fish harvested
+        { name: 'price_per_kg', type: 'number', isOptional: true },
+        { name: 'total_revenue', type: 'number', isOptional: true },
+        { name: 'is_sold', type: 'boolean', isOptional: true },
       ]
     }),
     tableSchema({

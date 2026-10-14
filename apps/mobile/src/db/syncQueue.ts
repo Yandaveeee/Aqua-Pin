@@ -78,6 +78,13 @@ function nowTs(): number {
   return Date.now()
 }
 
+function uuid(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.floor(Math.random() * 16);
+    return (c === 'x' ? r : (r & 3) | 8).toString(16);
+  });
+}
+
 function randomId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
 }
@@ -227,7 +234,7 @@ async function enqueueSyncOperationUnlocked(input: {
     entity: input.entity,
     operation: input.operation,
     localId,
-    remoteId: input.remoteId,
+    remoteId: input.remoteId || latest?.remoteId || (input.operation === 'create' ? (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(localId) ? localId : uuid()) : undefined),
     payload: input.payload || {},
     status: 'queued',
     attempts: 0,
@@ -238,7 +245,7 @@ async function enqueueSyncOperationUnlocked(input: {
   }
 
   // Collapse create->update into one create payload.
-  if (latest && latest.operation === 'create' && input.operation === 'update') {
+  if (latest && latest.status !== 'synced' && latest.operation === 'create' && input.operation === 'update') {
     const merged = mergeForUpsert(latest, { ...nextBase, operation: 'create' })
     const replaced = queue.map((item) => (item.id === latest.id ? merged : item))
     const cleaned = cleanupQueue(replaced)

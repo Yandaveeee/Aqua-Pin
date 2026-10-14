@@ -7917,3 +7917,693 @@ code {
     flex-wrap: wrap;
   }
 }
+
+/* ==========================================================================
+   Install APK & Public Download Page Styling
+   ========================================================================== */
+
+.install-apk-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding-bottom: 3rem;
+}
+
+.alert-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1.15rem;
+  border-radius: 10px;
+  font-size: 0.925rem;
+}
+
+.alert-banner svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.alert-success {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.alert-danger {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.apk-hero-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(135deg, #0e2e3b 0%, #071e27 100%);
+  color: #ffffff;
+  padding: 2.25rem 2.5rem;
+  border-radius: 16px;
+  box-shadow: 0 16px 36px -8px rgba(7, 30, 39, 0.4);
+  gap: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  flex-wrap: wrap;
+}
+
+.apk-hero-info {
+  flex: 1 1 450px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.apk-badge-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.apk-hero-title {
+  font-size: 1.85rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.apk-hero-description {
+  color: #94a3b8;
+  font-size: 1rem;
+  line-height: 1.6;
+  margin: 0;
+  max-width: 600px;
+}
+
+.apk-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.apk-meta-item {
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.65rem 0.85rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.apk-meta-label {
+  font-size: 0.725rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.apk-meta-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin-top: 0.15rem;
+}
+
+.apk-actions-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.apk-download-btn {
+  background: #0284c7 !important;
+  color: #ffffff !important;
+  border-color: #0284c7 !important;
+  font-size: 0.95rem;
+  padding: 0.75rem 1.4rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  border-radius: 8px;
+  text-decoration: none;
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
+  transition: all 0.15s ease;
+}
+
+.apk-download-btn:hover {
+  background: #0369a1 !important;
+  transform: translateY(-1px);
+}
+
+.apk-download-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.apk-qr-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #ffffff;
+  padding: 1.25rem;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  color: #0f172a;
+}
+
+.apk-qr-frame {
+  width: 200px;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.apk-qr-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.apk-qr-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0.6rem 0 0;
+  color: #0f172a;
+}
+
+.apk-qr-label svg {
+  width: 16px;
+  height: 16px;
+}
+
+.apk-qr-hint {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-top: 0.15rem;
+}
+
+.apk-grid-layout {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 1.5rem;
+}
+
+@media (max-width: 900px) {
+  .apk-grid-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.apk-settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  margin-top: 1rem;
+}
+
+.form-row-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.form-action-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-top: 0.75rem;
+}
+
+.ui-input,
+.ui-textarea {
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.925rem;
+  color: #0f172a;
+  background: #ffffff;
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ui-input:focus,
+.ui-textarea:focus {
+  outline: none;
+  border-color: #0284c7;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+}
+
+.ui-textarea {
+  resize: vertical;
+}
+
+.install-steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  margin-top: 1rem;
+}
+
+.install-step-item {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.install-step-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #0284c7;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.install-step-item strong {
+  display: block;
+  font-size: 0.95rem;
+  color: #0f172a;
+  margin-bottom: 0.2rem;
+}
+
+.install-step-item p {
+  font-size: 0.875rem;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.45;
+}
+
+.install-step-item code {
+  background: #f1f5f9;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  color: #0369a1;
+  font-size: 0.825rem;
+}
+
+/* Public Download Page */
+.public-download-page {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+  color: #0f172a;
+  display: flex;
+  flex-direction: column;
+}
+
+.public-download-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 2.5rem;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.public-download-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.public-download-brand strong {
+  display: block;
+  font-size: 1.15rem;
+  color: #0f172a;
+}
+
+.public-download-brand small {
+  display: block;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.public-download-nav {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.public-nav-link {
+  font-size: 0.925rem;
+  color: #475569;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.public-nav-link:hover {
+  color: #0284c7;
+}
+
+.public-nav-login {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+}
+
+.public-download-hero {
+  background: radial-gradient(circle at top right, #0e3b43 0%, #061c24 100%);
+  color: #ffffff;
+  padding: 4.5rem 2.5rem;
+}
+
+.public-download-inner {
+  max-width: 1140px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3.5rem;
+  flex-wrap: wrap;
+}
+
+.public-download-copy {
+  flex: 1 1 500px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.public-pill-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.public-download-title {
+  font-size: 2.75rem;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  margin: 0;
+  color: #ffffff;
+}
+
+.public-download-title span {
+  display: block;
+  background: linear-gradient(135deg, #38bdf8 0%, #4ade80 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.public-download-subtitle {
+  font-size: 1.1rem;
+  line-height: 1.6;
+  color: #cbd5e1;
+  margin: 0;
+}
+
+.public-specs-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 640px) {
+  .public-specs-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.public-spec-card {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.public-spec-label {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.public-spec-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-top: 0.2rem;
+}
+
+.public-cta-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.public-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  background: #0284c7;
+  color: #ffffff;
+  padding: 0.95rem 2rem;
+  border-radius: 8px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 10px 25px -5px rgba(2, 132, 199, 0.5);
+  transition: all 0.15s ease;
+}
+
+.public-download-btn:hover {
+  background: #0369a1;
+  transform: translateY(-2px);
+}
+
+.public-download-btn svg {
+  width: 22px;
+  height: 22px;
+}
+
+.public-steps-btn {
+  display: inline-flex;
+  align-items: center;
+  color: #e2e8f0;
+  padding: 0.95rem 1.4rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.public-security-note {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #94a3b8;
+  margin: 0.25rem 0 0;
+}
+
+.public-security-note svg {
+  width: 16px;
+  height: 16px;
+  color: #4ade80;
+}
+
+.public-qr-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #ffffff;
+  padding: 1.75rem;
+  border-radius: 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+  color: #0f172a;
+}
+
+.public-qr-box {
+  width: 210px;
+  height: 210px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.public-qr-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.public-qr-copy {
+  text-align: center;
+  margin-top: 1rem;
+}
+
+.public-qr-copy strong {
+  display: block;
+  font-size: 1rem;
+  color: #0f172a;
+}
+
+.public-qr-copy p {
+  font-size: 0.825rem;
+  color: #64748b;
+  margin: 0.25rem 0 0;
+  max-width: 180px;
+}
+
+.public-install-section {
+  max-width: 1140px;
+  margin: 3.5rem auto;
+  padding: 0 2rem;
+  width: 100%;
+}
+
+.public-section-head {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+.public-section-kicker {
+  color: #0284c7;
+  font-weight: 700;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.5rem;
+}
+
+.public-section-head h2 {
+  font-size: 2rem;
+  font-weight: 800;
+  margin: 0 0 0.5rem;
+  color: #0f172a;
+}
+
+.public-section-head span {
+  font-size: 1.05rem;
+  color: #64748b;
+}
+
+.public-steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.5rem;
+}
+
+.public-step-card {
+  background: #ffffff;
+  padding: 1.85rem;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+}
+
+.public-step-number {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #0284c7;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1.1rem;
+  margin-bottom: 1.25rem;
+}
+
+.public-step-card h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem;
+  color: #0f172a;
+}
+
+.public-step-card p {
+  font-size: 0.925rem;
+  color: #64748b;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.public-notes-section {
+  max-width: 1140px;
+  margin: 0 auto 3.5rem;
+  padding: 0 2rem;
+  width: 100%;
+}
+
+.public-notes-card {
+  background: #ffffff;
+  padding: 1.5rem 2rem;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.public-notes-card h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem;
+  color: #0f172a;
+}
+
+.public-notes-card p {
+  color: #475569;
+  line-height: 1.6;
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.public-download-footer {
+  margin-top: auto;
+  background: #0f172a;
+  color: #94a3b8;
+  padding: 2rem 2.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.public-download-footer strong {
+  color: #ffffff;
+  font-size: 1.1rem;
+}
+
+.public-download-footer p {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+}
+
+.public-footer-links {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.public-footer-links a {
+  color: #cbd5e1;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.public-footer-links a:hover {
+  color: #38bdf8;
+}

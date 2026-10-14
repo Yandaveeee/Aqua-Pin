@@ -1,3 +1,5 @@
+import { persistPondEdit, recoverPondEdit } from '../db/pondEdits';
+import { validateMapping } from '../lib/mapping';
 import { createContext, createElement, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
 import { AppState } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -242,6 +244,32 @@ export function usePonds() {
   return { ponds, loading };
 }
 
+async function logPondAction(pondId: string, eventType: string, recordedBy: string, eventData: Record<string, any>) {
+  const data = { pondId, eventType, recordedBy, eventData, createdAt: Date.now() };
+  const history = await createLocalPondHistoryRecord(data);
+  await enqueueCreateOperation('pond_history', history.id, { ...data, id: history.id }, pondId);
+}
+
+export function useUpdatePond() {
+  return useCallback(async (pondId: string, changes: { name?: string; location?: string; boundary?: string | null; isActive?: boolean }, userId: string) => withLocalMutation(async () => {
+    await recoverPondEdit(pondId, userId);
+    const pond = await getCollection('ponds').find(pondId);
+    if (!pond || pond.createdBy !== userId) throw new Error('This pond is unavailable.');
+    const payload = Object.fromEntries(['name', 'location', 'boundary', 'createdBy', 'createdAt', 'isActive', 'currentSpecies', 'currentStockCount'].map(key => [key, pond[key] ?? null]));
+    Object.assign(payload, changes, { id: pondId });
+    if (!String(payload.name || '').trim()) throw new Error('Enter a pond name.');
+    if (changes.location !== undefined || changes.boundary !== undefined) validateMapping(payload.location, payload.boundary);
+    const changed = Object.keys(changes).some(key => payload[key] !== (pond[key] ?? null));
+    if (!changed) return pond;
+    const eventType = changes.boundary !== undefined && changes.boundary !== pond.boundary ? (pond.boundary ? 'boundary_updated' : 'boundary_created')
+      : changes.location !== undefined && changes.location !== pond.location ? 'location_updated'
+      : changes.isActive === false ? 'pond_archived' : 'pond_updated';
+    await persistPondEdit(pondId, userId, payload, changes, eventType);
+    requestBackgroundSync();
+    return payload;
+  }), []);
+}
+
 // Hook to create a new pond (works offline)
 export function useCreatePond() {
   return useCallback(async (data: {
@@ -251,6 +279,8 @@ export function useCreatePond() {
     boundary?: string; // JSON string of polygon coordinates
   }) => withLocalMutation(async () => {
     try {
+      if (data.location || data.boundary) validateMapping(data.location, data.boundary);
+      if (!data.name.trim()) throw new Error('Enter a pond name.');
       let createdPond: any
 
       if (isMock) {
@@ -295,6 +325,8 @@ export function useCreatePond() {
         }
       );
 
+      await logPondAction(pondId, 'pond_created', data.createdBy, { name: data.name });
+      if (data.location || data.boundary) await logPondAction(pondId, data.boundary ? 'boundary_created' : 'location_marked', data.createdBy, { name: data.name });
       requestBackgroundSync();
 
       return createdPond;
@@ -381,9 +413,16 @@ export function useCreateHarvest() {
     species?: string;
     isPartial?: boolean;
     fishCount?: number;
+    pricePerKg?: number;
+    totalRevenue?: number;
+    isSold?: boolean;
   }) => withLocalMutation(async () => {
     try {
       const createdAtTs = Date.now();
+      const isSold = data.isSold ?? (data.totalRevenue !== undefined && data.totalRevenue > 0);
+      const pricePerKg = isSold ? (data.pricePerKg ?? (data.totalRevenue && data.yieldKg ? data.totalRevenue / data.yieldKg : 0)) : 0;
+      const totalRevenue = isSold ? (data.totalRevenue ?? (pricePerKg * data.yieldKg)) : 0;
+
       const created = isMock
         ? await db.collections.harvests.create((harvest: any) => {
             harvest.pondId = data.pondId;
@@ -393,6 +432,9 @@ export function useCreateHarvest() {
             harvest.species = data.species;
             harvest.isPartial = data.isPartial ?? false;
             harvest.fishCount = data.fishCount;
+            harvest.pricePerKg = pricePerKg;
+            harvest.totalRevenue = totalRevenue;
+            harvest.isSold = isSold;
           })
         : await db.write(async () => {
             const harvestsCollection = db.collections.get('harvests');
@@ -404,6 +446,9 @@ export function useCreateHarvest() {
               (harvest as any).species = data.species;
               (harvest as any).isPartial = data.isPartial ?? false;
               (harvest as any).fishCount = data.fishCount;
+              (harvest as any).pricePerKg = pricePerKg;
+              (harvest as any).totalRevenue = totalRevenue;
+              (harvest as any).isSold = isSold;
             });
           });
 
@@ -419,6 +464,9 @@ export function useCreateHarvest() {
           species: data.species,
           isPartial: data.isPartial,
           fishCount: data.fishCount,
+          pricePerKg,
+          totalRevenue,
+          isSold,
         },
         createdAt: createdAtTs,
         recordedBy: data.harvestedBy,
@@ -435,6 +483,9 @@ export function useCreateHarvest() {
         species: data.species ?? null,
         isPartial: data.isPartial ?? false,
         fishCount: data.fishCount ?? null,
+        pricePerKg: pricePerKg ?? null,
+        totalRevenue: totalRevenue ?? null,
+        isSold: isSold ?? false,
       }, data.pondId);
 
       await enqueueCreateOperation('pond_history', toId((historyEvent as any)?.id || (historyEvent as any)?._raw?.id), {
@@ -446,6 +497,9 @@ export function useCreateHarvest() {
           species: data.species,
           isPartial: data.isPartial,
           fishCount: data.fishCount,
+          pricePerKg,
+          totalRevenue,
+          isSold,
         },
         recordedBy: data.harvestedBy,
         createdAt: createdAtTs,
@@ -694,12 +748,7 @@ function useSyncState(enabled: boolean) {
         }
 
         const historicalLastSync = storedLastSync ? Number(storedLastSync) : 0;
-        const maxSyncTs = Math.max(
-          timestamps.lastPushAt || 0,
-          timestamps.lastPullAt || 0,
-          Number.isFinite(historicalLastSync) ? historicalLastSync : 0
-        );
-        setLastSync(maxSyncTs > 0 ? new Date(maxSyncTs) : null);
+        setLastSync(Number.isFinite(historicalLastSync) && historicalLastSync > 0 ? new Date(historicalLastSync) : null);
       } catch (error) {
         console.error('Error refreshing sync state:', error);
       }
@@ -779,6 +828,12 @@ function useSyncState(enabled: boolean) {
         },
       });
 
+      if (metrics.failed || metrics.blocked || metrics.conflict) {
+        await refreshSyncState();
+        const message = 'Some records could not synchronize. Open Sync Status and retry failed items.';
+        setSyncMessage(message);
+        return { success: false, message, metrics };
+      }
       const now = new Date();
       setLastSync(now);
       await AsyncStorage.setItem(LAST_SYNC_AT_KEY, String(now.getTime()));
@@ -791,13 +846,10 @@ function useSyncState(enabled: boolean) {
       return { success: true, message, timestamp: now, metrics };
     } catch (error) {
       console.error('Sync failed:', error);
-      const message =
-        error instanceof Error && error.message
-          ? error.message
-          : 'Sync failed. Will retry automatically.';
+      const message = 'Unable to synchronize records. Check your connection and try again. If this continues, contact your administrator.';
       setSyncMessage(message);
       setPreflightBlockers([message]);
-      await refreshSyncState();
+      await refreshSyncState().catch(() => {});
       return { success: false, message };
     } finally {
       syncInFlight.current = false;

@@ -50,6 +50,9 @@ export class Harvest extends Model {
   @text('species') species?: string
   @field('is_partial') isPartial!: boolean
   @field('fish_count') fishCount?: number
+  @field('price_per_kg') pricePerKg?: number
+  @field('total_revenue') totalRevenue?: number
+  @field('is_sold') isSold?: boolean
 }
 
 export class StockingLog extends Model {

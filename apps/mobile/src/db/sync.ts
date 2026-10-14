@@ -1,3 +1,5 @@
+import { recordSyncActivity } from './syncActivities';
+import { recoverPondEdits } from './pondEdits';
 import { clearLocalDatabase, database, mockDatabase } from './index'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import {
@@ -506,6 +508,15 @@ function normalizeLocalPayload(
         item.fishCount === null || item.fishCount === undefined
           ? null
           : Math.max(0, Math.round(toFiniteNumber(item.fishCount ?? item.fish_count, 0))),
+      pricePerKg: item.pricePerKg !== undefined || item.price_per_kg !== undefined
+        ? toFiniteNumber(item.pricePerKg ?? item.price_per_kg, 0)
+        : null,
+      totalRevenue: item.totalRevenue !== undefined || item.total_revenue !== undefined
+        ? toFiniteNumber(item.totalRevenue ?? item.total_revenue, 0)
+        : null,
+      isSold: item.isSold !== undefined || item.is_sold !== undefined
+        ? Boolean(item.isSold ?? item.is_sold)
+        : null,
     }
   }
 
@@ -634,7 +645,11 @@ function rowsEquivalent(entity: SyncEntity, localRow: any, remoteRow: any): bool
     return (
       safeText(localRow.name).trim() === safeText(remoteRow.name).trim() &&
       comparePointLike(localRow.location, remoteRow.location) &&
-      safeText(localRow.created_by || '').trim() === safeText(remoteRow.created_by || '').trim()
+      safeText(localRow.created_by || '').trim() === safeText(remoteRow.created_by || '').trim() &&
+      JSON.stringify(parseJsonField(localRow.boundary)) === JSON.stringify(parseJsonField(remoteRow.boundary)) &&
+      Boolean(localRow.is_active) === Boolean(remoteRow.is_active) &&
+      safeText(localRow.current_species) === safeText(remoteRow.current_species) &&
+      Number(localRow.current_stock_count || 0) === Number(remoteRow.current_stock_count || 0)
     )
   }
 
@@ -642,7 +657,8 @@ function rowsEquivalent(entity: SyncEntity, localRow: any, remoteRow: any): bool
     return (
       safeText(localRow.pond_id) === safeText(remoteRow.pond_id) &&
       Number(localRow.quantity || 0) === Number(remoteRow.quantity || 0) &&
-      safeText(localRow.logged_by) === safeText(remoteRow.logged_by)
+      safeText(localRow.logged_by) === safeText(remoteRow.logged_by) &&
+      safeText(localRow.notes) === safeText(remoteRow.notes)
     )
   }
 
@@ -650,7 +666,10 @@ function rowsEquivalent(entity: SyncEntity, localRow: any, remoteRow: any): bool
     return (
       safeText(localRow.pond_id) === safeText(remoteRow.pond_id) &&
       Number(localRow.yield_kg || 0) === Number(remoteRow.yield_kg || 0) &&
-      safeText(localRow.harvested_by) === safeText(remoteRow.harvested_by)
+      safeText(localRow.harvested_by) === safeText(remoteRow.harvested_by) &&
+      safeText(localRow.species) === safeText(remoteRow.species) &&
+      Boolean(localRow.is_partial) === Boolean(remoteRow.is_partial) &&
+      localRow.fish_count === remoteRow.fish_count
     )
   }
 
@@ -659,14 +678,18 @@ function rowsEquivalent(entity: SyncEntity, localRow: any, remoteRow: any): bool
       safeText(localRow.pond_id) === safeText(remoteRow.pond_id) &&
       safeText(localRow.species) === safeText(remoteRow.species) &&
       Number(localRow.quantity || 0) === Number(remoteRow.quantity || 0) &&
-      safeText(localRow.stocked_by) === safeText(remoteRow.stocked_by)
+      safeText(localRow.stocked_by) === safeText(remoteRow.stocked_by) &&
+      safeText(localRow.status) === safeText(remoteRow.status) &&
+      localRow.average_weight_g === remoteRow.average_weight_g &&
+      safeText(localRow.source) === safeText(remoteRow.source)
     )
   }
 
   return (
     safeText(localRow.pond_id) === safeText(remoteRow.pond_id) &&
     safeText(localRow.event_type) === safeText(remoteRow.event_type) &&
-    safeText(localRow.recorded_by) === safeText(remoteRow.recorded_by)
+    safeText(localRow.recorded_by) === safeText(remoteRow.recorded_by) &&
+    JSON.stringify(parseJsonField(localRow.event_data)) === JSON.stringify(parseJsonField(remoteRow.event_data))
   )
 }
 
@@ -809,7 +832,7 @@ async function findEquivalentRemoteCreate(
   const exactId = safeText(preferredId).trim()
   if (exactId) {
     const exactMatch = await fetchRemoteById(entity, exactId)
-    if (exactMatch) {
+    if (exactMatch && rowsEquivalent(entity, row, exactMatch)) {
       return {
         remoteId: exactId,
         row: exactMatch,
@@ -1266,6 +1289,7 @@ async function syncMockQueueToSupabase(
       if (!item || !isQueueItemReadyForRetry(item)) continue
       const result = await processSingleQueueItem(queue, item, userId, pondMaps, metrics)
       const processed = result.queue.find(entry => entry.id === item.id)
+      if (processed?.status === 'synced') await recordSyncActivity(item, userId)
       if (processed) await commitSyncResult(item, processed)
     }
   }
@@ -2258,6 +2282,7 @@ export async function syncData(options: SyncDataOptions = {}): Promise<SyncMetri
       metrics,
     })
 
+    await recoverPondEdits(preflight.userId)
     await syncMockQueueToSupabase(preflight.userId, options, metrics)
     const scopeToUser = preflight.profile?.role !== 'admin'
 
@@ -2296,6 +2321,9 @@ export async function syncData(options: SyncDataOptions = {}): Promise<SyncMetri
     await removeSyncedQueueItems(15_000)
     const snapshot = await getSyncQueueSnapshot(200)
     metrics.queueAfter = snapshot.pending
+    metrics.failed = Math.max(metrics.failed, snapshot.failed)
+    metrics.blocked = Math.max(metrics.blocked, snapshot.blocked)
+    metrics.conflict = Math.max(metrics.conflict, snapshot.conflict)
 
     if (metrics.failed > 0 || metrics.blocked > 0 || metrics.conflict > 0) {
       const details: string[] = []

@@ -1,3 +1,4 @@
+import { useLanguage } from '../../contexts/LanguageContext';
 import React, { useMemo, useState, useEffect } from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -13,6 +14,7 @@ const TAB_META: Record<string, { label: string; outline: keyof typeof Ionicons.g
 };
 
 export default function AquapinTabBar({ state, navigation }: BottomTabBarProps) {
+  const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const [isQuickSheetOpen, setIsQuickSheetOpen] = useState(false);
   const [parentParams, setParentParams] = useState<any>(null);
@@ -142,7 +144,7 @@ export default function AquapinTabBar({ state, navigation }: BottomTabBarProps) 
             color={isFocused ? aquapinColors.green : aquapinColors.textMuted}
           />
         </View>
-        <Text style={[styles.tabLabel, isFocused && styles.tabLabelActive]}>{meta.label}</Text>
+        <Text style={[styles.tabLabel, isFocused && styles.tabLabelActive]}>{t(meta.label)}</Text>
       </TouchableOpacity>
     );
   };

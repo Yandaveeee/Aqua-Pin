@@ -4,6 +4,10 @@ export interface GeneralSettings {
   organizationName: string
   timezone: string
   units: 'metric' | 'imperial'
+  apkDownloadUrl?: string
+  appVersion?: string
+  apkFileSize?: string
+  appReleaseNotes?: string
 }
 
 export interface OperationsSettings {

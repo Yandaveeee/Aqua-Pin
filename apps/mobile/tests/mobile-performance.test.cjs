@@ -49,8 +49,8 @@ test('local transaction saves finish without waiting for a hanging network and p
   assert.equal(finalPond.isActive, false);
   assert.equal((await db.getAll('stocking:'))[0].status, 'harvested');
   await hooks.useCreatePondHistoryEvent()({ pondId: pond.id, eventType: 'sampling', recordedBy: 'user' });
-  assert.equal((await db.getAll('history:')).length, 5);
-  assert.equal((await queue.getSyncQueueSnapshot()).pending, 10);
+  assert.equal((await db.getAll('history:')).length, 7); // Includes pond creation and GPS activity.
+  assert.equal((await queue.getSyncQueueSnapshot()).pending, 12);
   assert.equal(networkCalls(), 0, 'the durable local save path must never call the network');
   assert.equal(syncRequests, 6);
   unsubscribe();

@@ -13,7 +13,7 @@ function createLoader(mocks = {}, globals = {}) {
     cache.set(filename, exports);
     const source = fs.readFileSync(filename, 'utf8');
     const compiled = ts.transpileModule(source, {
-      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.React, esModuleInterop: true },
     }).outputText;
     vm.runInNewContext(compiled, {
       exports, console: { ...console, warn() {}, error() {}, log() {} },

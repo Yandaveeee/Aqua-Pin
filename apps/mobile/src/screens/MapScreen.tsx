@@ -1,3 +1,4 @@
+import { validateMapping } from '../lib/mapping';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
@@ -20,7 +21,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import MapView, { Marker, Region, MapPressEvent, MapType, Polygon, Polyline, UrlTile, PROVIDER_GOOGLE, PROVIDER_DEFAULT } from 'react-native-maps';
 import * as Location from 'expo-location';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { usePonds, useCreatePond } from '../hooks/useOfflineData';
+import { usePonds, useCreatePond, useUpdatePond } from '../hooks/useOfflineData';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { LeafletMapView, LeafletMapViewRef } from '../components/LeafletMapView';
@@ -177,6 +178,12 @@ export default function MapScreen() {
   const [keyboardOffset, setKeyboardOffset] = useState(0);
   const { ponds } = usePonds();
   const createPond = useCreatePond();
+  const updatePond = useUpdatePond();
+  const [selectedMappedId, setSelectedMappedId] = useState<string | null>(null);
+  const [editingPondId, setEditingPondId] = useState<string | null>(null);
+  const saveLock = useRef(false);
+  const [movingBoundary, setMovingBoundary] = useState(false);
+  const [selectedVertex, setSelectedVertex] = useState<number | null>(null);
   const { user } = useAuth();
   const lastPondFitSignatureRef = useRef('');
   const hasMappedPondsRef = useRef(false);
@@ -191,6 +198,7 @@ export default function MapScreen() {
   );
 
   useEffect(() => {
+    if (route.params?.pondId) { setSelectedMappedId(route.params.pondId); setMapMode('view'); return; }
     const initialMode = route.params?.initialMode as MapMode | undefined;
     if (!initialMode || !['view', 'point', 'polygon'].includes(initialMode)) {
       return;
@@ -199,7 +207,7 @@ export default function MapScreen() {
     setMapMode(initialMode);
     setSelectedLocation(null);
     setPolygonPoints([]);
-  }, [route.params?.initialMode, route.params?.requestKey]);
+  }, [route.params?.pondId, route.params?.initialMode, route.params?.requestKey]);
 
   const focusRegion = useCallback((nextRegion: Region, animated = true) => {
     setRegion(nextRegion);
@@ -212,7 +220,8 @@ export default function MapScreen() {
   const mappedPonds = useMemo<MappedPond[]>(() => {
     return ponds
       .map((pond: any) => {
-        const center = parseLocation(pond.location);
+        const boundary = parseBoundary(pond.boundary);
+        const center = parseLocation(pond.location) || (boundary.length >= 3 ? { latitude: boundary.reduce((n, p) => n + p.latitude, 0) / boundary.length, longitude: boundary.reduce((n, p) => n + p.longitude, 0) / boundary.length } : null);
         if (!center) return null;
 
         return {
@@ -220,7 +229,7 @@ export default function MapScreen() {
           name: pond.name || 'Unnamed Pond',
           location: pond.location || '',
           center,
-          boundary: parseBoundary(pond.boundary),
+          boundary,
           isActive: Boolean(pond.isActive),
         };
       })
@@ -394,17 +403,25 @@ export default function MapScreen() {
     };
   }, [insets.bottom]);
 
-  const handleMapPress = useCallback((event: MapPressEvent) => {
-    const { coordinate } = event.nativeEvent;
-
-    if (mapMode === 'point') {
-      setSelectedLocation(coordinate);
-    } else if (mapMode === 'polygon') {
-      setPolygonPoints(prev => [...prev, coordinate]);
+  const applyMapCoordinate = useCallback((coordinate: Coordinate) => {
+    if (loading) return;
+    if (mapMode === 'point') setSelectedLocation(coordinate);
+    else if (mapMode === 'polygon') {
+      setPolygonPoints(prev => {
+        if (movingBoundary && prev.length) {
+          const lat = prev.reduce((n, p) => n + p.latitude, 0) / prev.length;
+          const lng = prev.reduce((n, p) => n + p.longitude, 0) / prev.length;
+          return prev.map(p => ({ latitude: p.latitude + coordinate.latitude - lat, longitude: p.longitude + coordinate.longitude - lng }));
+        }
+        return selectedVertex === null ? [...prev, coordinate] : prev.map((p, i) => i === selectedVertex ? coordinate : p);
+      });
+      setSelectedVertex(null); setMovingBoundary(false);
     }
-  }, [mapMode]);
+  }, [mapMode, selectedVertex, movingBoundary, loading]);
+  const handleMapPress = useCallback((event: MapPressEvent) => applyMapCoordinate(event.nativeEvent.coordinate), [applyMapCoordinate]);
 
   const undoLastPoint = () => {
+    setSelectedVertex(null);
     setPolygonPoints(prev => prev.slice(0, -1));
   };
 
@@ -421,7 +438,7 @@ export default function MapScreen() {
   };
 
   const handleCreatePond = async () => {
-    if (!pondName.trim() || !user) return;
+    if (!pondName.trim() || !user || saveLock.current) return;
 
     const centerPoint = mapMode === 'point'
       ? selectedLocation
@@ -437,6 +454,7 @@ export default function MapScreen() {
       return;
     }
 
+    saveLock.current = true;
     setLoading(true);
     try {
       await createPond({
@@ -458,6 +476,7 @@ export default function MapScreen() {
     } catch (error) {
       Alert.alert('Error', 'Failed to create pond');
     } finally {
+      saveLock.current = false;
       setLoading(false);
     }
   };
@@ -520,6 +539,8 @@ export default function MapScreen() {
   };
 
   const cancelEditing = () => {
+    if (saveLock.current) return;
+    setEditingPondId(null); setSelectedVertex(null); setMovingBoundary(false);
     setMapMode('view');
     setSelectedLocation(null);
     setPolygonPoints([]);
@@ -555,7 +576,45 @@ export default function MapScreen() {
         ? 'Boundary ready. Tap Finish Boundary to continue.'
         : `Add ${polygonPointsMissing} more point${polygonPointsMissing === 1 ? '' : 's'} to finish the boundary.`;
 
+  const beginMappingEdit = (addBoundary = false) => {
+    const source = ponds.find(p => p.id === selectedMappedId);
+    if (!source) return;
+    const mapped = mappedPonds.find(p => p.id === selectedMappedId);
+    const center = mapped?.center || { latitude: region.latitude, longitude: region.longitude };
+    const boundary = mapped?.boundary || [];
+    setEditingPondId(source.id); setSelectedMappedId(null); setSelectedVertex(null); setMovingBoundary(false);
+    setPolygonPoints(boundary.map(p => ({ ...p })));
+    setSelectedLocation(mapped ? { ...center } : null);
+    setMapMode(addBoundary || boundary.length >= 3 ? 'polygon' : 'point');
+    focusRegion({ ...center, latitudeDelta: 0.005, longitudeDelta: 0.005 });
+  };
+  const saveMapping = () => {
+    if (!editingPondId || !user || saveLock.current) return;
+    const point = mapMode === 'point' ? selectedLocation : {
+      latitude: polygonPoints.reduce((n, p) => n + p.latitude, 0) / polygonPoints.length,
+      longitude: polygonPoints.reduce((n, p) => n + p.longitude, 0) / polygonPoints.length,
+    };
+    if (!point) return;
+    const location = `${point.latitude}, ${point.longitude}`;
+    const boundary = mapMode === 'polygon' ? JSON.stringify(polygonPoints) : null;
+    try { validateMapping(location, boundary); } catch (error) { Alert.alert('Check mapping', error instanceof Error ? error.message : 'Invalid boundary'); return; }
+    Alert.alert('Save Mapping', mapMode === 'polygon' ? 'Save changes to this pond boundary?' : 'Save changes to this pond location?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Save', onPress: async () => {
+        if (saveLock.current) return;
+        saveLock.current = true; setLoading(true);
+        try {
+          await updatePond(editingPondId, { location, boundary }, user.id);
+          setEditingPondId(null); setMapMode('view'); setSelectedLocation(null); setPolygonPoints([]);
+          Alert.alert('Saved', 'Pond mapping saved locally and queued for synchronization.');
+        } catch (error) { Alert.alert('Unable to save', 'Please try saving the pond mapping again.'); }
+        finally { saveLock.current = false; setLoading(false); }
+      } },
+    ]);
+  };
+
   const handleEditConfirm = () => {
+    if (editingPondId) { saveMapping(); return; }
     if (pointReadyToSave) {
       setModalVisible(true);
       return;
@@ -571,18 +630,16 @@ export default function MapScreen() {
         <LeafletMapView
           ref={leafletRef}
           initialRegion={region}
-          mappedPonds={mappedPonds}
+          mappedPonds={mappedPonds.filter(p => p.id !== editingPondId)}
+          onPondPress={id => { if (mapMode === 'view') setSelectedMappedId(id); }}
+          onVertexPress={index => setSelectedVertex(index)}
+          onVertexMove={(index, point) => setPolygonPoints(prev => prev.map((p, i) => i === index ? point : p))}
+          onMarkerMove={setSelectedLocation}
           selectedLocation={selectedLocation}
           polygonPoints={polygonPoints}
           mapMode={mapMode}
           tileSource={tileSource as any}
-          onMapPress={(coord) => {
-            if (mapMode === 'point') {
-              setSelectedLocation(coord);
-            } else if (mapMode === 'polygon') {
-              setPolygonPoints((prev) => [...prev, coord]);
-            }
-          }}
+          onMapPress={applyMapCoordinate}
           style={styles.map}
         />
       ) : (
@@ -598,10 +655,12 @@ export default function MapScreen() {
           mapType={mapType}
           onMapReady={() => setMapReady(true)}
         >
-          {mappedPonds.map((pond) => (
+          {mappedPonds.filter(p => p.id !== editingPondId).map((pond) => (
             <React.Fragment key={pond.id}>
               {pond.boundary.length >= 3 && (
                 <Polygon
+                  tappable
+                  onPress={() => { if (mapMode === 'view') setSelectedMappedId(pond.id); }}
                   coordinates={pond.boundary}
                   fillColor={pond.isActive ? 'rgba(0, 123, 255, 0.3)' : 'rgba(22, 163, 74, 0.24)'}
                   strokeColor={pond.isActive ? '#007bff' : '#16a34a'}
@@ -609,6 +668,7 @@ export default function MapScreen() {
                 />
               )}
               <Marker
+                onPress={(e) => { e.stopPropagation(); if (mapMode === 'view') setSelectedMappedId(pond.id); }}
                 coordinate={pond.center}
                 title={pond.name}
                 description={pond.boundary.length >= 3 ? 'Boundary mapped' : pond.location}
@@ -629,7 +689,7 @@ export default function MapScreen() {
           {polygonPoints.length > 0 && (
             <>
               {polygonPoints.map((point, index) => (
-                <Marker key={index} coordinate={point} pinColor="#16a34a" title={`Point ${index + 1}`} />
+                <Marker key={index} coordinate={point} draggable onDragEnd={e => setPolygonPoints(prev => prev.map((p, i) => i === index ? e.nativeEvent.coordinate : p))} onPress={e => { e.stopPropagation(); setSelectedVertex(index); }} pinColor="#16a34a" title={`Point ${index + 1}`} />
               ))}
               {polygonPoints.length > 1 && (
                 <Polyline coordinates={polygonPoints} strokeColor="#16a34a" strokeWidth={4} />
@@ -776,6 +836,14 @@ export default function MapScreen() {
               <Text style={styles.editHintText}>{editHintText}</Text>
             </View>
 
+            {mapMode === 'polygon' && <View>
+              <Text>{movingBoundary ? 'Tap the map to place the boundary center.' : 'Drag a point to move it. Tap the map to add a point.'}</Text>
+              {polygonPoints.length >= 3 && <TouchableOpacity style={{ padding: 12 }} onPress={() => { setMovingBoundary(!movingBoundary); setSelectedVertex(null); }}><Text>{movingBoundary ? 'Cancel Move' : 'Move Whole Boundary'}</Text></TouchableOpacity>}
+              <ScrollView horizontal>{polygonPoints.map((_, i) => <TouchableOpacity key={i} onPress={() => setSelectedVertex(i)} style={{ padding: 12, backgroundColor: selectedVertex === i ? '#bfdbfe' : '#fff' }}><Text>Point {i + 1}</Text></TouchableOpacity>)}</ScrollView>
+              {selectedVertex !== null && <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}><Text>Tap map to move point {selectedVertex + 1}.</Text><TouchableOpacity style={{ padding: 12 }} onPress={() => { setPolygonPoints(prev => prev.filter((_, i) => i !== selectedVertex)); setSelectedVertex(null); }}><Text>Remove Point</Text></TouchableOpacity><TouchableOpacity style={{ padding: 12 }} onPress={() => {
+                setPolygonPoints(prev => { const a = prev[selectedVertex], b = prev[(selectedVertex + 1) % prev.length]; if (!a || !b) return prev; return [...prev.slice(0, selectedVertex + 1), { latitude: (a.latitude + b.latitude) / 2, longitude: (a.longitude + b.longitude) / 2 }, ...prev.slice(selectedVertex + 1)]; }); setSelectedVertex(null);
+              }}><Text>Add Point After</Text></TouchableOpacity><TouchableOpacity style={{ padding: 12 }} onPress={() => setSelectedVertex(null)}><Text>Done</Text></TouchableOpacity></View>}
+            </View>}
             <View style={styles.editButtonsRow}>
               {mapMode === 'polygon' && polygonPoints.length > 0 && (
                 <TouchableOpacity style={styles.undoButton} onPress={undoLastPoint}>
@@ -791,17 +859,28 @@ export default function MapScreen() {
               <TouchableOpacity
                 style={[styles.confirmButton, !canConfirmEdit && styles.confirmButtonDisabled]}
                 onPress={handleEditConfirm}
-                disabled={!canConfirmEdit}
+                disabled={!canConfirmEdit || loading}
               >
                 <Ionicons name="checkmark" size={20} color="#fff" />
                 <Text style={styles.confirmButtonText}>
-                  {mapMode === 'point' ? 'Save Pond' : 'Finish Boundary'}
+                  {loading ? 'Saving...' : editingPondId ? 'Save Changes' : mapMode === 'point' ? 'Save Pond' : 'Finish Boundary'}
                 </Text>
               </TouchableOpacity>
             </View>
           </View>
         )}
       </SafeAreaView>
+
+      <Modal visible={!!selectedMappedId} transparent animationType="fade" onRequestClose={() => setSelectedMappedId(null)}>
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: '#0006' }}><View style={{ backgroundColor: '#fff', padding: 24, paddingBottom: 32, borderRadius: 24 }}>
+          <Text style={{ fontSize: 22, fontWeight: '700' }}>{ponds.find(p => p.id === selectedMappedId)?.name}</Text>
+          <Text>{mappedPonds.find(p => p.id === selectedMappedId)?.boundary.length ? 'Boundary: Mapped' : mappedPonds.some(p => p.id === selectedMappedId) ? 'Location: Marked' : 'Location: Not mapped'}</Text>
+          <TouchableOpacity style={{ padding: 16 }} onPress={() => { const id = selectedMappedId; setSelectedMappedId(null); navigation.navigate('PondWorkspace', { pondId: id, requestKey: Date.now() }); }}><Text>View Details / Records / Activities</Text></TouchableOpacity>
+          <TouchableOpacity style={{ padding: 16 }} onPress={() => beginMappingEdit()}><Text>{mappedPonds.find(p => p.id === selectedMappedId)?.boundary.length ? 'Edit Boundary' : mappedPonds.some(p => p.id === selectedMappedId) ? 'Edit Location' : 'Mark Location'}</Text></TouchableOpacity>
+          {!mappedPonds.find(p => p.id === selectedMappedId)?.boundary.length && <TouchableOpacity style={{ padding: 16 }} onPress={() => beginMappingEdit(true)}><Text>Add Boundary</Text></TouchableOpacity>}
+          <TouchableOpacity style={{ padding: 16 }} onPress={() => setSelectedMappedId(null)}><Text>Close</Text></TouchableOpacity>
+        </View></View>
+      </Modal>
 
       {/* Create Pond Modal */}
       <Modal

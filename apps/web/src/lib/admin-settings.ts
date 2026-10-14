@@ -112,6 +112,10 @@ export const ADMIN_SETTINGS_DEFAULTS: AdminSettingsSections = {
     organizationName: "AquaPin Operations",
     timezone: "Asia/Manila",
     units: "metric",
+    apkDownloadUrl: "https://github.com/Yandaveeee/Aquapin/releases/download/v1.0.0/aquapin-release.apk",
+    appVersion: "1.0.0",
+    apkFileSize: "62.1 MB",
+    appReleaseNotes: "Official AquaPin Android release with GPS pond mapping, offline synchronization, and harvest logs.",
   },
   operations: {
     survivalThresholdPercent: 84,
@@ -169,6 +173,10 @@ export const SETTINGS_FIELD_LABELS: Record<SettingSection, FieldLabelMap> = {
     organizationName: "Organization name",
     timezone: "Time zone",
     units: "Units",
+    apkDownloadUrl: "APK download URL",
+    appVersion: "App version",
+    apkFileSize: "APK file size",
+    appReleaseNotes: "Release notes",
   },
   operations: {
     survivalThresholdPercent: "Survival threshold",
@@ -206,6 +214,10 @@ export function normalizeAdminSettingSection<T extends SettingSection>(
         organizationName: readString(rawValue.organizationName, fallback.organizationName),
         timezone: readString(rawValue.timezone, fallback.timezone),
         units: rawValue.units === "imperial" ? "imperial" : fallback.units,
+        apkDownloadUrl: typeof rawValue.apkDownloadUrl === "string" ? rawValue.apkDownloadUrl : fallback.apkDownloadUrl,
+        appVersion: typeof rawValue.appVersion === "string" ? rawValue.appVersion : fallback.appVersion,
+        apkFileSize: typeof rawValue.apkFileSize === "string" ? rawValue.apkFileSize : fallback.apkFileSize,
+        appReleaseNotes: typeof rawValue.appReleaseNotes === "string" ? rawValue.appReleaseNotes : fallback.appReleaseNotes,
       } as AdminSettingsSections[T];
     }
     case "operations": {
@@ -282,6 +294,10 @@ export function parseSettingFormData<T extends SettingSection>(section: T, formD
         organizationName: getRequiredString(formData, "organizationName", "Organization name"),
         timezone: getRequiredString(formData, "timezone", "Time zone"),
         units: getFieldValue(formData, "units") === "imperial" ? "imperial" : "metric",
+        apkDownloadUrl: validateOptionalUrl(getOptionalString(formData, "apkDownloadUrl"), "APK download URL"),
+        appVersion: getOptionalString(formData, "appVersion"),
+        apkFileSize: getOptionalString(formData, "apkFileSize"),
+        appReleaseNotes: getOptionalString(formData, "appReleaseNotes"),
       } as AdminSettingsSections[T];
     case "operations":
       return {

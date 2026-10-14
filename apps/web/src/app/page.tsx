@@ -154,13 +154,24 @@ export default function HomePage() {
             ))}
           </nav>
 
-          <Link className="aquapin-login" href="/login">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="12" cy="8" r="3.5" />
-              <path d="M5 21v-2a7 7 0 0 1 14 0v2" />
-            </svg>
-            Login
-          </Link>
+          <div className="aquapin-header-actions" style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            <Link className="aquapin-apk-link" href="/download" style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", padding: "0.55rem 0.95rem", borderRadius: "9999px", background: "rgba(14, 165, 233, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.35)", fontWeight: 600, fontSize: "0.875rem", textDecoration: "none" }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="16" height="16" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Install APK
+            </Link>
+
+            <Link className="aquapin-login" href="/login">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="8" r="3.5" />
+                <path d="M5 21v-2a7 7 0 0 1 14 0v2" />
+              </svg>
+              Login
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -186,6 +197,51 @@ export default function HomePage() {
               administrators monitor ponds, review field activity, and make informed operational
               decisions.
             </p>
+            <div className="aquapin-hero-buttons" style={{ display: "flex", alignItems: "center", gap: "1rem", marginTop: "1.5rem", flexWrap: "wrap" }}>
+              <Link
+                href="/download"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.55rem",
+                  padding: "0.85rem 1.6rem",
+                  borderRadius: "0.6rem",
+                  backgroundColor: "#0284c7",
+                  color: "#ffffff",
+                  fontWeight: 600,
+                  fontSize: "1rem",
+                  textDecoration: "none",
+                  boxShadow: "0 10px 25px -5px rgba(2, 132, 199, 0.4)",
+                  transition: "transform 0.15s ease, background 0.15s ease",
+                }}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="20" height="20" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Install Mobile APK
+              </Link>
+              <Link
+                href="/login"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  padding: "0.85rem 1.4rem",
+                  borderRadius: "0.6rem",
+                  backgroundColor: "rgba(255, 255, 255, 0.12)",
+                  color: "#ffffff",
+                  fontWeight: 600,
+                  fontSize: "1rem",
+                  textDecoration: "none",
+                  backdropFilter: "blur(8px)",
+                  border: "1px solid rgba(255, 255, 255, 0.25)",
+                }}
+              >
+                Admin Console &rarr;
+              </Link>
+            </div>
           </div>
 
           <div className="aquapin-highlights" aria-label="AquaPin highlights">
@@ -263,6 +319,7 @@ export default function HomePage() {
           <Link href="#about">About</Link>
           <Link href="#features">Features</Link>
           <Link href="#how-it-works">How It Works</Link>
+          <Link href="/download">Install APK</Link>
           <Link href="/login">Login</Link>
         </nav>
       </footer>

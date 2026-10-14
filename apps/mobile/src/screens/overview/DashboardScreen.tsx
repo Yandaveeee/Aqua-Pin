@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, ScrollView, StyleSheet, Text, TouchableOpacity, View, Platform } from 'react-native';
+import { Animated, Easing, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -128,12 +128,6 @@ export default function DashboardScreen() {
     }
   }, [mapReady, ponds]);
 
-  const waterQualityScore = useMemo(() => {
-    if (overview.survivalRate === null) return 91;
-    const mortalityPenalty = overview.totalMortality > 0 ? Math.min(12, Math.round(overview.totalMortality / 250)) : 0;
-    return Math.max(74, Math.round(overview.survivalRate) - mortalityPenalty);
-  }, [overview.survivalRate, overview.totalMortality]);
-
   const openStackScreen = (name: string, params?: Record<string, any>) => {
     navigation.getParent()?.navigate(name, params);
   };
@@ -239,26 +233,216 @@ export default function DashboardScreen() {
     },
   ];
 
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+
+  const userNotifications = useMemo(() => {
+    const list: Array<{
+      id: string;
+      title: string;
+      message: string;
+      icon: string;
+      toneBg: string;
+      toneFg: string;
+      time?: string;
+      tag?: string;
+    }> = [];
+
+    // 1. Pond alerts based on live pond stock and cycle states
+    ponds.forEach((pond: any) => {
+      const stock = Number(pond.currentStockCount || 0);
+      if (pond.isActive) {
+        if (stock <= 50) {
+          list.push({
+            id: `alert-stock-critical-${pond.id}`,
+            title: 'Critical Stock Alert',
+            message: `${pond.name || 'Pond'} stock is critically low (${stock} fish). Restocking recommended.`,
+            icon: 'alert-circle-outline',
+            toneBg: aquapinColors.redSoft,
+            toneFg: aquapinColors.red,
+            tag: pond.name || 'Pond',
+          });
+        } else if (stock < 100) {
+          list.push({
+            id: `alert-stock-low-${pond.id}`,
+            title: 'Low Stock Level',
+            message: `${pond.name || 'Pond'} estimated stock is below 100 fish (${stock} fish).`,
+            icon: 'warning-outline',
+            toneBg: aquapinColors.amberSoft,
+            toneFg: aquapinColors.amber,
+            tag: pond.name || 'Pond',
+          });
+        }
+
+        if (!pond.currentSpecies) {
+          list.push({
+            id: `alert-species-${pond.id}`,
+            title: 'Species Reminder',
+            message: `Set the active species in ${pond.name || 'Pond'} to improve tracking accuracy.`,
+            icon: 'fish-outline',
+            toneBg: aquapinColors.blueSoft,
+            toneFg: aquapinColors.blue,
+            tag: pond.name || 'Pond',
+          });
+        }
+      } else {
+        list.push({
+          id: `alert-inactive-${pond.id}`,
+          title: 'Pond Inactive',
+          message: `${pond.name || 'Pond'} is currently idle. Ready for pond prep or restocking.`,
+          icon: 'pause-circle-outline',
+          toneBg: aquapinColors.surfaceMuted,
+          toneFg: aquapinColors.textMuted,
+          tag: pond.name || 'Pond',
+        });
+      }
+    });
+
+    // 2. Recent pond activity updates
+    overview.recentActivities.slice(0, 4).forEach((act) => {
+      let icon = 'notifications-outline';
+      let toneBg = aquapinColors.blueSoft;
+      let toneFg = aquapinColors.blue;
+      let title = act.title;
+
+      if (act.type === 'harvest') {
+        icon = 'basket-outline';
+        toneBg = aquapinColors.blueSoft;
+        toneFg = aquapinColors.blue;
+        title = 'Harvest Activity';
+      } else if (act.type === 'stocking') {
+        icon = 'add-circle-outline';
+        toneBg = aquapinColors.greenSoft;
+        toneFg = aquapinColors.green;
+        title = 'Stocking Activity';
+      } else if (act.type === 'mortality') {
+        icon = 'warning-outline';
+        toneBg = aquapinColors.redSoft;
+        toneFg = aquapinColors.red;
+        title = 'Mortality Logged';
+      }
+
+      list.push({
+        id: `act-${act.id}`,
+        title,
+        message: `${act.subtitle}: ${act.amount}`,
+        icon,
+        toneBg,
+        toneFg,
+        time: formatRelativeTime(act.createdAt),
+        tag: 'Activity',
+      });
+    });
+
+    // 3. System readiness notice
+    list.push({
+      id: 'system-ready',
+      title: 'Background Sync Active',
+      message: 'Automatic data synchronization is working silently in the background.',
+      icon: 'shield-checkmark-outline',
+      toneBg: aquapinColors.greenSoft,
+      toneFg: aquapinColors.green,
+      tag: 'System',
+    });
+
+    return list;
+  }, [ponds, overview.recentActivities]);
+
+  const alertCount = useMemo(
+    () => userNotifications.filter((n) => n.toneFg === aquapinColors.red || n.toneFg === aquapinColors.amber).length,
+    [userNotifications]
+  );
+
   const topActivity = overview.recentActivities[0];
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      {/* User Notifications Modal (reserved for alerts, updates, activity reminders) */}
+      <Modal
+        visible={notificationsOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setNotificationsOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleRow}>
+                <View style={styles.modalIconBadge}>
+                  <Ionicons name="notifications" size={18} color={aquapinColors.blue} />
+                </View>
+                <View>
+                  <Text style={styles.modalTitle}>Notifications</Text>
+                  <Text style={styles.modalSubtitle}>Pond alerts, updates & activity reminders</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.modalClose}
+                onPress={() => setNotificationsOpen(false)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="close" size={18} color={aquapinColors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              contentContainerStyle={styles.notificationList}
+              showsVerticalScrollIndicator={false}
+            >
+              {userNotifications.length > 0 ? (
+                userNotifications.map((notification, idx) => (
+                  <View key={notification.id || `notif-${idx}`} style={styles.notificationCard}>
+                    <View style={[styles.notificationIconWrap, { backgroundColor: notification.toneBg }]}>
+                      <Ionicons name={notification.icon as any} size={20} color={notification.toneFg} />
+                    </View>
+                    <View style={styles.notificationCopy}>
+                      <View style={styles.notificationHeader}>
+                        <Text style={styles.notificationItemTitle}>{notification.title}</Text>
+                        {notification.time ? (
+                          <Text style={styles.notificationTime}>{notification.time}</Text>
+                        ) : null}
+                      </View>
+                      <Text style={styles.notificationMessage}>{notification.message}</Text>
+                      {notification.tag ? (
+                        <View style={styles.notificationTagPill}>
+                          <Text style={styles.notificationTagText}>{notification.tag}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <View style={styles.emptyNotificationCard}>
+                  <Ionicons name="checkmark-done-circle-outline" size={48} color={aquapinColors.green} />
+                  <Text style={styles.emptyNotificationTitle}>All caught up!</Text>
+                  <Text style={styles.emptyNotificationSubtitle}>No active pond alerts or pending reminders right now.</Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.content}
         scrollEnabled={scrollEnabled}
       >
         <View style={styles.headerRow}>
+          {/* AI Assistant (Top Left) - Sparkling icon and recognizable label */}
           <View style={styles.aiEntryWrap}>
             <Animated.View style={{ transform: [{ scale: aiButtonScale }] }}>
               <TouchableOpacity
-                style={styles.iconButton}
-                activeOpacity={0.88}
+                style={styles.aiButton}
+                activeOpacity={0.85}
                 accessibilityRole="button"
                 accessibilityLabel="AI Assistant"
                 onPress={() => openStackScreen('AiAssistant')}
               >
-                <MaterialCommunityIcons name="robot-outline" size={23} color={aquapinColors.blue} />
+                <View style={styles.aiIconBadge}>
+                  <Ionicons name="sparkles" size={14} color="#ffffff" />
+                </View>
+                <Text style={styles.aiButtonLabel}>AI Assistant</Text>
               </TouchableOpacity>
             </Animated.View>
             {showAiIntro ? (
@@ -272,7 +456,10 @@ export default function DashboardScreen() {
                   },
                 ]}
               >
-                <Text style={styles.aiIntroText}>Introducing your AI Assistant</Text>
+                <View style={styles.aiTooltipContent}>
+                  <Ionicons name="sparkles" size={12} color={aquapinColors.blue} />
+                  <Text style={styles.aiIntroText}>AI Assistant • Smart pond insights</Text>
+                </View>
               </Animated.View>
             ) : null}
           </View>
@@ -282,8 +469,17 @@ export default function DashboardScreen() {
             </Text>
             <Text style={styles.brandSubtitle}>Aquapin Version 2.0</Text>
           </View>
-          <TouchableOpacity style={styles.iconButton} onPress={() => openStackScreen('SyncStatus')}>
+          {/* Top-Right Notification Icon - User alerts & activity reminders */}
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={() => setNotificationsOpen(true)}
+            activeOpacity={0.88}
+            accessibilityLabel="Notifications"
+          >
             <Ionicons name="notifications-outline" size={22} color={aquapinColors.text} />
+            {alertCount > 0 ? (
+              <View style={styles.notificationDot} />
+            ) : null}
           </TouchableOpacity>
         </View>
 
@@ -395,11 +591,6 @@ export default function DashboardScreen() {
             <Text style={[styles.analyticsValue, { color: aquapinColors.green }]}>{formatCurrencyPhp(overview.estimatedRevenue)}</Text>
             <Text style={styles.analyticsSub}>Harvest value from recorded yields</Text>
           </View>
-          <View style={[styles.analyticsCard, { borderColor: aquapinColors.blueSoft }]}>
-            <Text style={styles.analyticsLabel}>Water Quality</Text>
-            <Text style={[styles.analyticsValue, { color: aquapinColors.blue }]}>{waterQualityScore}%</Text>
-            <Text style={styles.analyticsSub}>Derived from recent survival and loss trends</Text>
-          </View>
           <View style={[styles.analyticsCard, { borderColor: aquapinColors.amberSoft }]}>
             <Text style={styles.analyticsLabel}>Sync Queue</Text>
             <Text style={[styles.analyticsValue, { color: aquapinColors.amber }]}>{formatWholeNumber(queueSnapshot.pending)}</Text>
@@ -489,11 +680,38 @@ const styles = StyleSheet.create({
   },
   aiEntryWrap: {
     position: 'relative',
-    width: 42,
-    height: 42,
+    zIndex: 20,
+  },
+  aiButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: aquapinColors.surface,
+    paddingLeft: 6,
+    paddingRight: 11,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1.2,
+    borderColor: 'rgba(30, 90, 167, 0.22)',
+    shadowColor: '#16335c',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+    gap: 6,
+  },
+  aiIconBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: aquapinColors.blue,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 20,
+  },
+  aiButtonLabel: {
+    color: aquapinColors.blue,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
   iconButton: {
     width: 42,
@@ -504,29 +722,185 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: aquapinColors.border,
+    position: 'relative',
+  },
+  notificationDot: {
+    position: 'absolute',
+    top: 9,
+    right: 9,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: aquapinColors.red,
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
   },
   aiIntroBubble: {
     position: 'absolute',
-    top: 50,
+    top: 44,
     left: 0,
-    width: 208,
-    borderRadius: 18,
+    borderRadius: 14,
     backgroundColor: aquapinColors.surface,
-    paddingHorizontal: 13,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderWidth: 1,
-    borderColor: aquapinColors.border,
+    borderColor: 'rgba(30, 90, 167, 0.2)',
     shadowColor: '#16335c',
     shadowOpacity: 0.12,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+    minWidth: 180,
+  },
+  aiTooltipContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   aiIntroText: {
     color: aquapinColors.text,
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 11.5,
+    lineHeight: 16,
     fontWeight: '800',
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(8, 18, 32, 0.38)',
+  },
+  modalContent: {
+    backgroundColor: aquapinColors.surface,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    maxHeight: '80%',
+    minHeight: '40%',
+  },
+  modalHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: aquapinColors.border,
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#edf3f8',
+  },
+  modalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  modalIconBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: aquapinColors.blueSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: {
+    color: aquapinColors.text,
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  modalSubtitle: {
+    color: aquapinColors.textMuted,
+    fontSize: 11.5,
+    marginTop: 2,
+  },
+  modalClose: {
+    width: 34,
+    height: 34,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: aquapinColors.surfaceMuted,
+  },
+  notificationList: {
+    padding: 16,
+    gap: 10,
+    paddingBottom: 32,
+  },
+  notificationCard: {
+    flexDirection: 'row',
+    backgroundColor: aquapinColors.surfaceMuted,
+    borderRadius: 18,
+    borderWidth: 1.2,
+    borderColor: '#e2ebf4',
+    padding: 14,
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  notificationIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notificationCopy: {
+    flex: 1,
+  },
+  notificationHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 3,
+  },
+  notificationItemTitle: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: aquapinColors.text,
+  },
+  notificationTime: {
+    fontSize: 11,
+    color: aquapinColors.textMuted,
+    fontWeight: '600',
+  },
+  notificationMessage: {
+    fontSize: 12,
+    color: aquapinColors.textMuted,
+    lineHeight: 17,
+  },
+  notificationTagPill: {
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#e0eaf3',
+  },
+  notificationTagText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: aquapinColors.text,
+  },
+  emptyNotificationCard: {
+    alignItems: 'center',
+    paddingVertical: 36,
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  emptyNotificationTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: aquapinColors.text,
+  },
+  emptyNotificationSubtitle: {
+    fontSize: 12.5,
+    color: aquapinColors.textMuted,
+    textAlign: 'center',
+    lineHeight: 18,
   },
   brandBlock: {
     alignItems: 'center',

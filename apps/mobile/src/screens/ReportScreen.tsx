@@ -1,3 +1,10 @@
+import { fetchWithTimeout } from '../lib/network';
+import { supabase } from '../lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
+import ChatMarkdown from '../components/ChatMarkdown';
+import { assistantSnapshot, Conversation, conversationKey, readConversations, newConversation } from '../lib/assistant';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
@@ -12,13 +19,16 @@ import {
   KeyboardAvoidingView,
   Alert,
   Dimensions,
+  Modal,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useNavigation } from '@react-navigation/native';
 import { usePonds } from '../hooks/useOfflineData';
+import { aquapinColors } from '../theme/aquapin';
 import { CONFIG } from '../config';
 
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const AI_API_URL = `${CONFIG.supabase.url}/functions/v1/ai-chat`;
 
 interface Message {
   id: string;
@@ -43,6 +53,29 @@ const WELCOME_MESSAGE: Message = {
 };
 
 export default function ReportScreen() {
+  const navigation = useNavigation<any>();
+  const { user } = useAuth();
+  const { language, t } = useLanguage();
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeId, setActiveId] = useState('');
+  const [historyVisible, setHistoryVisible] = useState(false);
+  const [historyReady, setHistoryReady] = useState(false);
+  const [storageError, setStorageError] = useState('');
+  const persistence = useRef(Promise.resolve());
+  const abortRef = useRef<AbortController | null>(null);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; abortRef.current?.abort(); }; }, []);
+  useEffect(() => {
+    let current = true;
+    if (!user) return;
+    AsyncStorage.getItem(conversationKey(user.id)).then(raw => {
+      if (!current) return;
+      const stored = readConversations(raw);
+      const chats = stored.length ? stored : [newConversation(WELCOME_MESSAGE)];
+      setConversations(chats); setActiveId(chats[0].id); setMessages(chats[0].messages); setHistoryReady(true);
+    }).catch(() => { if (current) setStorageError('Unable to load conversation history. Reopen the assistant to retry.'); });
+    return () => { current = false; };
+  }, [user?.id]);
   const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [inputText, setInputText] = useState('');
@@ -52,6 +85,24 @@ export default function ReportScreen() {
   const { ponds } = usePonds();
   const scrollViewRef = useRef<ScrollView>(null);
   const requestInFlight = useRef(false);
+
+  useEffect(() => {
+    if (!historyReady || !user || !activeId) return;
+    const updated = conversations.map(c => c.id === activeId ? { ...c, messages, title: messages.find(m => m.role === 'user')?.content.slice(0, 65) || 'New Chat' } : c);
+    const key = conversationKey(user.id);
+    persistence.current = persistence.current.catch(() => {}).then(() => AsyncStorage.setItem(key, JSON.stringify(updated)))
+      .then(() => { if (alive.current) setStorageError(''); })
+      .catch(() => { if (alive.current) setStorageError('Unable to save conversation history. Keep this screen open and try again.'); });
+  }, [messages, activeId, historyReady, user?.id, conversations]);
+  const switchConversation = (chat?: Conversation) => {
+    if (requestInFlight.current || !historyReady) return;
+    const next = chat || newConversation(WELCOME_MESSAGE);
+    setConversations(previous => {
+      const updated = previous.map(c => c.id === activeId ? { ...c, messages, title: messages.find(m => m.role === 'user')?.content.slice(0, 65) || 'New Chat' } : c);
+      return chat ? updated : [next, ...updated];
+    });
+    setActiveId(next.id); setMessages(next.messages); setInputText(''); setHistoryVisible(false);
+  };
 
   useEffect(() => {
     const showSubscription = Keyboard.addListener(
@@ -87,8 +138,8 @@ export default function ReportScreen() {
     }, 100);
   }, [messages, loading]);
 
-  const sendMessage = async (text: string) => {
-    if (!text.trim() || requestInFlight.current) return;
+  const sendMessage = async (text: string, retry = false) => {
+    if (!text.trim() || requestInFlight.current || !historyReady || !user) return;
     requestInFlight.current = true;
 
     const userMessage: Message = {
@@ -98,49 +149,30 @@ export default function ReportScreen() {
       timestamp: new Date(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    const history = retry ? messages.slice(0, -2) : messages;
+    setMessages([...history, userMessage]);
     setInputText('');
     setLoading(true);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    abortRef.current = controller;
+    const timeout = setTimeout(() => controller.abort(), 55000);
 
     try {
-      if (!CONFIG.ai.groqApiKey) {
-        throw new Error('AI chat is not configured. Please contact your administrator.');
-      }
-
-      const pondContext = ponds.length > 0
-        ? `User has ${ponds.length} ponds: ${ponds.map((p: any) => p.name).join(', ')}.`
-        : 'User has no ponds registered.';
-
-      const response = await fetch(GROQ_API_URL, {
-        method: 'POST',
-        signal: controller.signal,
-        headers: {
-          'Authorization': `Bearer ${CONFIG.ai.groqApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: CONFIG.ai.model,
-          messages: [
-            {
-              role: 'system',
-              content: `You are AquaPin AI. ${pondContext} Give concise aquaculture advice.`,
-            },
-            ...messages.filter(m => !m.isError).slice(-3).map(m => ({ role: m.role, content: m.content })),
-            { role: 'user', content: text },
-          ],
-          temperature: 0.7,
-          max_tokens: 300,
-        }),
-      });
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Please sign in again to use AquaPin AI.');
+      const snapshot = await assistantSnapshot(user.id).catch(() => ({ source: 'Local records unavailable. Do not invent data.' }));
+      const response = await fetchWithTimeout(AI_API_URL, {
+        method: 'POST', signal: controller.signal,
+        headers: { Authorization: `Bearer ${session.access_token}`, apikey: CONFIG.supabase.anonKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, language, snapshot, history: history.filter(m => !m.isError && m.id !== 'welcome').slice(-20).map(m => ({ role: m.role, content: m.content })) }),
+      }, 55000);
 
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
           throw new Error('AI service access was denied. Please contact your administrator.');
         }
         if (response.status === 404) {
-          throw new Error('The configured AI model is unavailable. Please contact your administrator.');
+          throw new Error('AquaPin AI is not deployed yet. Please contact your administrator.');
         }
         if (response.status === 429) {
           throw new Error('AI usage limit reached. Please wait a moment and try again.');
@@ -149,11 +181,12 @@ export default function ReportScreen() {
       }
 
       const data = await response.json();
-      const aiResponse = data.choices?.[0]?.message?.content;
+      const aiResponse = data.content;
       if (typeof aiResponse !== 'string' || !aiResponse.trim()) {
         throw new Error('The AI returned an empty response. Please try again.');
       }
 
+      if (!alive.current) return;
       setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -161,6 +194,7 @@ export default function ReportScreen() {
         timestamp: new Date(),
       }]);
     } catch (error) {
+      if (!alive.current) return;
       setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -179,7 +213,7 @@ export default function ReportScreen() {
     } finally {
       clearTimeout(timeout);
       requestInFlight.current = false;
-      setLoading(false);
+      if (alive.current) setLoading(false);
     }
   };
 
@@ -188,7 +222,7 @@ export default function ReportScreen() {
   };
 
   const clearConversation = () => {
-    if (messages.length <= 1) return;
+    if (messages.length <= 1 || requestInFlight.current) return;
 
     Alert.alert(
       'Clear Conversation',
@@ -199,6 +233,7 @@ export default function ReportScreen() {
           text: 'Clear',
           style: 'destructive',
           onPress: () => {
+            if (requestInFlight.current) return;
             setMessages([{ ...WELCOME_MESSAGE, timestamp: new Date() }]);
             setInputText('');
           },
@@ -215,11 +250,13 @@ export default function ReportScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <View style={styles.headerContent}>
-            <Ionicons name="hardware-chip" size={28} color="#007bff" />
-            <View>
+          <View style={styles.headerLeft}>
+            <TouchableOpacity style={styles.backButton} activeOpacity={0.9} onPress={() => navigation.goBack()}>
+              <Ionicons name="chevron-back" size={22} color={aquapinColors.text} />
+            </TouchableOpacity>
+            <View style={styles.headerCopy}>
               <Text style={styles.title}>AquaPin AI</Text>
-              <Text style={styles.subtitle}>Your aquaculture assistant</Text>
+              <Text style={styles.subtitle}>{t('Your aquaculture assistant')}</Text>
             </View>
           </View>
           <View style={styles.headerRight}>
@@ -230,13 +267,26 @@ export default function ReportScreen() {
             <TouchableOpacity
               style={[styles.clearButton, messages.length <= 1 && styles.clearButtonDisabled]}
               onPress={clearConversation}
-              disabled={messages.length <= 1}
+              disabled={messages.length <= 1 || loading}
             >
               <Ionicons name="trash-outline" size={16} color={messages.length <= 1 ? '#9ca3af' : '#666'} />
             </TouchableOpacity>
           </View>
         </View>
 
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', padding: 8, gap: 8 }}>
+          {[['New Chat', () => switchConversation()], ['Conversation History', () => setHistoryVisible(true)], ['Clear Chat', clearConversation]].map(([label, action]) => (
+            <TouchableOpacity key={String(label)} accessibilityRole="button" disabled={loading || !historyReady} onPress={action as () => void} style={{ padding: 12, backgroundColor: '#e3f2fd', borderRadius: 12, opacity: loading ? 0.5 : 1 }}><Text>{t(String(label))}</Text></TouchableOpacity>
+          ))}
+        </View>
+        {!historyReady && !storageError && <ActivityIndicator accessibilityLabel="Loading conversation history" />}
+        {!!storageError && <Text accessibilityRole="alert" style={{ color: '#b91c1c', padding: 12 }}>{storageError}</Text>}
+        <Modal visible={historyVisible} onRequestClose={() => setHistoryVisible(false)} animationType="slide">
+          <SafeAreaView style={{ flex: 1, padding: 20 }}><Text style={styles.title}>{t('Conversation History')}</Text>
+            <TouchableOpacity onPress={() => setHistoryVisible(false)} style={{ padding: 16 }}><Text>Close</Text></TouchableOpacity>
+            <ScrollView>{conversations.map(c => <TouchableOpacity key={c.id} onPress={() => switchConversation(c.id === activeId ? { ...c, messages } : c)} style={{ padding: 16, borderBottomWidth: 1, borderColor: '#ddd' }}><Text>{c.id === activeId ? messages.find(m => m.role === 'user')?.content.slice(0, 65) || t('New Chat') : c.title}</Text><Text>{c.messages[0]?.timestamp.toLocaleString()}</Text></TouchableOpacity>)}</ScrollView>
+          </SafeAreaView>
+        </Modal>
         <View style={[styles.chatArea, { paddingBottom: keyboardOffset }]}>
           {/* Messages */}
           <ScrollView
@@ -266,9 +316,9 @@ export default function ReportScreen() {
                   </Text>
                   <Text style={styles.timestamp}>{formatTime(message.timestamp)}</Text>
                 </View>
-                <Text style={[styles.messageText, message.role === 'user' ? styles.userText : styles.assistantText]}>
-                  {message.content}
-                </Text>
+                {message.role === 'assistant' ? <ChatMarkdown content={message.content} /> : <Text style={[styles.messageText, styles.userText]}>{message.content}</Text>}
+                {message.isError && message.id === messages[messages.length - 1]?.id && <TouchableOpacity disabled={loading} style={{ padding: 12 }} onPress={() => { const previous = messages[messages.length - 2]; if (previous?.role === 'user') void sendMessage(previous.content, true); }}><Text>{t('Retry Response')}</Text></TouchableOpacity>}
+
               </View>
             ))}
 
@@ -308,7 +358,7 @@ export default function ReportScreen() {
                   style={styles.input}
                   value={inputText}
                   onChangeText={setInputText}
-                  placeholder="Ask about your ponds..."
+                  placeholder={t('Ask about your ponds...')}
                   placeholderTextColor="#94a3b8"
                   multiline
                   maxLength={500}
@@ -325,7 +375,7 @@ export default function ReportScreen() {
                 <TouchableOpacity
                   style={[styles.sendButton, (!inputText.trim() || loading) && styles.sendButtonDisabled]}
                   onPress={() => sendMessage(inputText)}
-                  disabled={!inputText.trim() || loading}
+                  disabled={!inputText.trim() || loading || !historyReady}
                   accessibilityRole="button"
                   accessibilityLabel="Send message"
                 >
@@ -365,10 +415,24 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e1e4e8',
   },
-  headerContent: {
+  headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flex: 1,
+  },
+  backButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    backgroundColor: aquapinColors.surface,
+    borderWidth: 1,
+    borderColor: aquapinColors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerCopy: {
+    flex: 1,
   },
   headerRight: {
     flexDirection: 'row',
@@ -434,6 +498,7 @@ const styles = StyleSheet.create({
   },
   assistantBubble: {
     alignSelf: 'flex-start',
+    width: '90%',
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#e1e4e8',

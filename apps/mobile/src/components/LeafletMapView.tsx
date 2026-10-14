@@ -35,6 +35,10 @@ interface LeafletMapViewProps {
   polygonPoints?: Coordinate[];
   mapMode?: 'view' | 'point' | 'polygon';
   tileSource?: MapTileSource;
+  onPondPress?: (id: string) => void;
+  onVertexPress?: (index: number) => void;
+  onVertexMove?: (index: number, point: Coordinate) => void;
+  onMarkerMove?: (point: Coordinate) => void;
   onMapPress?: (coordinate: Coordinate) => void;
   style?: any;
 }
@@ -79,6 +83,7 @@ const LEAFLET_HTML = `
       }
     });
 
+    function post(data) { if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify(data)); }
     window.updateMapData = function(data) {
       if (!data) return;
 
@@ -99,10 +104,11 @@ const LEAFLET_HTML = `
 
           if (Array.isArray(pond.boundary) && pond.boundary.length >= 3) {
             var polyCoords = pond.boundary.map(function(c) { return [c.latitude, c.longitude]; });
-            L.polygon(polyCoords, { color: color, fillColor: fillColor, weight: 2, fillOpacity: 0.4 }).addTo(pondsGroup);
+            L.polygon(polyCoords, { color: color, fillColor: fillColor, weight: 2, fillOpacity: 0.4, bubblingMouseEvents: false }).addTo(pondsGroup).on('click', function() { post({type:'pondPress', id:pond.id}); });
           }
 
           var marker = L.circleMarker([pond.center.latitude, pond.center.longitude], {
+            bubblingMouseEvents: false,
             radius: 8,
             color: '#ffffff',
             weight: 2,
@@ -110,33 +116,21 @@ const LEAFLET_HTML = `
             fillOpacity: 1
           }).addTo(pondsGroup);
 
-          if (pond.name) {
-            marker.bindPopup('<div class="pond-popup">' + pond.name + '</div>');
-          }
+          marker.on('click', function() { post({type:'pondPress', id:pond.id}); });
         });
       }
 
       if (data.selectedLocation && data.mapMode === 'point') {
-        L.circleMarker([data.selectedLocation.latitude, data.selectedLocation.longitude], {
-          radius: 10,
-          color: '#ffffff',
-          weight: 3,
-          fillColor: '#28a745',
-          fillOpacity: 1
-        }).addTo(editingGroup);
+        L.marker([data.selectedLocation.latitude, data.selectedLocation.longitude], {draggable:true}).addTo(editingGroup).on('dragend', function(e) { var p=e.target.getLatLng(); post({type:'markerMove',latitude:p.lat,longitude:p.lng}); });
       }
 
       if (Array.isArray(data.polygonPoints) && data.polygonPoints.length > 0) {
         var pts = data.polygonPoints.map(function(c) { return [c.latitude, c.longitude]; });
 
-        pts.forEach(function(pt) {
-          L.circleMarker(pt, {
-            radius: 7,
-            color: '#ffffff',
-            weight: 2,
-            fillColor: '#16a34a',
-            fillOpacity: 1
-          }).addTo(editingGroup);
+        pts.forEach(function(pt, index) {
+          L.marker(pt, {draggable:true, bubblingMouseEvents:false}).addTo(editingGroup)
+            .on('click', function() { post({type:'vertexPress',index:index}); })
+            .on('dragend', function(e) { var p=e.target.getLatLng(); post({type:'vertexMove',index:index,latitude:p.lat,longitude:p.lng}); });
         });
 
         if (pts.length > 1) {
@@ -171,7 +165,7 @@ export const LeafletMapView = forwardRef<LeafletMapViewRef, LeafletMapViewProps>
       polygonPoints,
       mapMode = 'view',
       tileSource = 'osm',
-      onMapPress,
+      onMapPress, onPondPress, onVertexPress, onVertexMove, onMarkerMove,
       style,
     },
     ref
@@ -210,6 +204,13 @@ export const LeafletMapView = forwardRef<LeafletMapViewRef, LeafletMapViewProps>
     const handleMessage = (event: any) => {
       try {
         const payload = JSON.parse(event.nativeEvent.data);
+        if (payload?.type === 'pondPress' && typeof payload.id === 'string') onPondPress?.(payload.id);
+        if (payload?.type === 'vertexPress' && Number.isInteger(payload.index)) onVertexPress?.(payload.index);
+        if (Number.isFinite(payload.latitude) && Number.isFinite(payload.longitude)) {
+          const point = { latitude: payload.latitude, longitude: payload.longitude };
+          if (payload.type === 'vertexMove' && Number.isInteger(payload.index)) onVertexMove?.(payload.index, point);
+          if (payload.type === 'markerMove') onMarkerMove?.(point);
+        }
         if (payload?.type === 'mapPress' && onMapPress) {
           onMapPress({
             latitude: payload.latitude,

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   View,
   Text,
   StyleSheet,
@@ -77,6 +78,9 @@ interface RecentEntry {
   notes?: string;
   species?: string;
   status: QueueStatus;
+  revenue?: number;
+  pricePerKg?: number;
+  isSold?: boolean;
 }
 
 interface HistoryRow {
@@ -248,12 +252,22 @@ export default function DataEntryScreen() {
   const [source, setSource] = useState('');
   const [isPartialHarvest, setIsPartialHarvest] = useState(true);
   const [fishCount, setFishCount] = useState('');
+  const [sellingPrice, setSellingPrice] = useState('');
+  const [isSold, setIsSold] = useState(true);
+
+  const parsedHarvestWeight = parseFloat(quantity) || 0;
+  const parsedSellingPrice = parseFloat(sellingPrice) || 0;
+  const calculatedTotalRevenue = isSold && parsedHarvestWeight > 0 && parsedSellingPrice > 0
+    ? parsedHarvestWeight * parsedSellingPrice
+    : 0;
 
   const [loading, setLoading] = useState(false);
   const savingRef = useRef(false);
   const [showPondSelector, setShowPondSelector] = useState(false);
   const [showSpeciesSelector, setShowSpeciesSelector] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [recordQuery, setRecordQuery] = useState('');
+  const [oldestFirst, setOldestFirst] = useState(false);
 
   const [recentEntries, setRecentEntries] = useState<RecentEntry[]>([]);
 
@@ -275,6 +289,7 @@ export default function DataEntryScreen() {
   const focusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    if (route.params?.pondId) { setSelectedPondId(route.params.pondId); setFilterPondId(route.params.pondId); }
     const initialType = route.params?.initialType as EntryType | undefined;
     const initialSegment = route.params?.initialSegment as DataSegment | undefined;
     const initialFilterType = route.params?.initialFilterType as EntryType | 'all' | undefined;
@@ -297,11 +312,11 @@ export default function DataEntryScreen() {
     ) {
       setFilterType(initialFilterType);
     }
-  }, [route.params?.historyOnly, route.params?.initialFilterType, route.params?.initialType, route.params?.initialSegment, route.params?.requestKey]);
+  }, [route.params?.pondId, route.params?.historyOnly, route.params?.initialFilterType, route.params?.initialType, route.params?.initialSegment, route.params?.requestKey]);
 
   const [fieldLayouts, setFieldLayouts] = useState<Record<string, number>>({});
 
-  const { ponds } = usePonds();
+  const { ponds, loading: pondsLoading } = usePonds();
   const { user } = useAuth();
   const createMortalityLog = useCreateMortalityLog();
   const createHarvest = useCreateHarvest();
@@ -439,10 +454,11 @@ export default function DataEntryScreen() {
   }, [lastSync, pendingChanges.entries]);
 
   useEffect(() => {
+    if (pondsLoading) return;
     if (!pondFilterOptions.includes(filterPondId)) {
       setFilterPondId('all');
     }
-  }, [pondFilterOptions, filterPondId]);
+  }, [pondFilterOptions, filterPondId, pondsLoading]);
 
   useEffect(() => {
     return () => {
@@ -492,6 +508,8 @@ export default function DataEntryScreen() {
     setSource('');
     setFishCount('');
     setIsPartialHarvest(true);
+    setSellingPrice('');
+    setIsSold(true);
   }, []);
 
   const submitEntry = useCallback(
@@ -560,6 +578,14 @@ export default function DataEntryScreen() {
             loggedBy: user.id,
           });
         } else if (selectedType === 'harvest') {
+          const priceValue = isSold ? parseFloat(sellingPrice) : 0;
+          if (isSold && (!sellingPrice.trim() || Number.isNaN(priceValue) || priceValue <= 0)) {
+            showToast('error', 'Enter a valid selling price per kilogram (₱).');
+            return;
+          }
+
+          const revenueValue = isSold && priceValue > 0 ? quantityValue * priceValue : 0;
+
           await createHarvest({
             pondId: selectedPondId,
             yieldKg: quantityValue,
@@ -567,6 +593,9 @@ export default function DataEntryScreen() {
             species: resolvedHarvestSpecies || (pond as any).currentSpecies,
             isPartial: isPartialHarvest,
             fishCount: fishCount ? parseInt(fishCount, 10) : undefined,
+            pricePerKg: isSold ? priceValue : 0,
+            totalRevenue: revenueValue,
+            isSold,
           });
         } else if (selectedType === 'stocking') {
           await createStockingLog({
@@ -583,6 +612,9 @@ export default function DataEntryScreen() {
           return;
         }
 
+        const harvestPriceValue = isSold ? parseFloat(sellingPrice) : 0;
+        const harvestRevenueValue = isSold && harvestPriceValue > 0 ? quantityValue * harvestPriceValue : 0;
+
         const recentEntry: RecentEntry = {
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           type: selectedType,
@@ -597,6 +629,9 @@ export default function DataEntryScreen() {
               ? resolvedHarvestSpecies || undefined
               : normalizedSpecies || undefined,
           status: 'queued',
+          revenue: selectedType === 'harvest' && isSold ? harvestRevenueValue : undefined,
+          pricePerKg: selectedType === 'harvest' && isSold ? harvestPriceValue : undefined,
+          isSold: selectedType === 'harvest' ? isSold : undefined,
         };
 
         setRecentEntries((prev) => [recentEntry, ...prev].slice(0, 250));
@@ -614,6 +649,9 @@ export default function DataEntryScreen() {
             ? error.message
             : 'Failed to save entry.';
 
+        const harvestPriceValue = isSold ? parseFloat(sellingPrice) : 0;
+        const harvestRevenueValue = isSold && harvestPriceValue > 0 ? quantityValue * harvestPriceValue : 0;
+
         const failedEntry: RecentEntry = {
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           type: selectedType,
@@ -628,6 +666,9 @@ export default function DataEntryScreen() {
               ? resolvedHarvestSpecies || undefined
               : normalizedSpecies || undefined,
           status: 'failed',
+          revenue: selectedType === 'harvest' && isSold ? harvestRevenueValue : undefined,
+          pricePerKg: selectedType === 'harvest' && isSold ? harvestPriceValue : undefined,
+          isSold: selectedType === 'harvest' ? isSold : undefined,
         };
 
         setRecentEntries((prev) => [failedEntry, ...prev].slice(0, 250));
@@ -653,6 +694,8 @@ export default function DataEntryScreen() {
       source,
       fishCount,
       isPartialHarvest,
+      sellingPrice,
+      isSold,
       currentType.unit,
       currentType.label,
       resetFormFields,
@@ -721,7 +764,13 @@ export default function DataEntryScreen() {
 
         let subtitle = data.notes || 'Activity logged';
         if (type === 'harvest') {
-          subtitle = `${Number(data.yieldKg || quantityValue || 0).toLocaleString()} kg harvested`;
+          const yieldKg = Number(data.yieldKg || quantityValue || 0);
+          const rev = Number(data.totalRevenue ?? (data.isSold ? (yieldKg * Number(data.pricePerKg || 0)) : 0));
+          const sold = data.isSold ?? (rev > 0);
+          const revenueText = sold && rev > 0
+            ? ` • ₱${Math.round(rev).toLocaleString('en-PH')}`
+            : (data.isSold === false ? ' • Not sold' : '');
+          subtitle = `${yieldKg.toLocaleString()} kg harvested${revenueText}`;
         } else if (type === 'mortality') {
           subtitle = `${Math.round(Number(data.quantity || 0)).toLocaleString()} fish recorded`;
         } else if (quantityValue > 0) {
@@ -755,16 +804,20 @@ export default function DataEntryScreen() {
   );
 
   const filteredRecentEntries = useMemo(() => {
+    const query = recordQuery.trim().toLocaleLowerCase();
     return recentEntries
-      .filter((entry) => matchesSharedFilters(entry.pondId, entry.type, entry.createdAt, entry.status))
-      .sort((a, b) => b.createdAt - a.createdAt);
-  }, [recentEntries, matchesSharedFilters]);
+      .filter(entry => matchesSharedFilters(entry.pondId, entry.type, entry.createdAt, entry.status))
+      .filter(entry => !query || [entry.pondName, entry.type, entry.species, entry.notes, entry.quantityValue].join(' ').toLocaleLowerCase().includes(query))
+      .sort((a, b) => oldestFirst ? a.createdAt - b.createdAt : b.createdAt - a.createdAt);
+  }, [recentEntries, matchesSharedFilters, recordQuery, oldestFirst]);
 
   const filteredHistoryRows = useMemo(() => {
+    const query = recordQuery.trim().toLocaleLowerCase();
     return historyRows
-      .filter((entry) => matchesSharedFilters(entry.pondId, entry.type, entry.createdAt, entry.status))
-      .sort((a, b) => b.createdAt - a.createdAt);
-  }, [historyRows, matchesSharedFilters]);
+      .filter(entry => matchesSharedFilters(entry.pondId, entry.type, entry.createdAt, entry.status))
+      .filter(entry => !query || [entry.pondName, entry.type, entry.title, entry.subtitle].join(' ').toLocaleLowerCase().includes(query))
+      .sort((a, b) => oldestFirst ? a.createdAt - b.createdAt : b.createdAt - a.createdAt);
+  }, [historyRows, matchesSharedFilters, recordQuery, oldestFirst]);
 
   const queueEntries = useMemo(() => {
     return filteredRecentEntries.filter((entry) => entry.status !== 'synced');
@@ -1023,6 +1076,8 @@ export default function DataEntryScreen() {
 
   const renderCompactFilters = () => (
     <View style={styles.filterShell}>
+      <TextInput accessibilityLabel="Search records" placeholder="Search records by pond, species or notes" value={recordQuery} onChangeText={setRecordQuery} style={{ padding: 12, borderWidth: 1, borderColor: '#dbe5ef', borderRadius: 12, marginBottom: 8 }} />
+      <TouchableOpacity accessibilityRole="button" style={{ padding: 12 }} onPress={() => setOldestFirst(!oldestFirst)}><Text>Sort: {oldestFirst ? 'Oldest First' : 'Newest First'}</Text></TouchableOpacity>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -1092,6 +1147,7 @@ export default function DataEntryScreen() {
               <Text style={styles.entryTypeText}>{typeMeta.label}</Text>
               <Text style={styles.entrySubText} numberOfLines={1}>
                 {entry.pondName} • {formatQuantity(entry.quantityValue, entry.unit)}
+                {entry.revenue !== undefined && entry.revenue > 0 ? ` • ₱${Math.round(entry.revenue).toLocaleString('en-PH')}` : (entry.isSold === false ? ' • Not sold' : '')}
               </Text>
               <Text style={styles.entryTimeText}>{formatEventDate(entry.createdAt)}</Text>
             </View>
@@ -1124,6 +1180,7 @@ export default function DataEntryScreen() {
           </View>
 
           <View style={styles.swipeActions}>
+            <TouchableOpacity style={[styles.swipeActionButton, styles.editAction]} onPress={() => Alert.alert('Record Details', `${entry.pondName}\n${entry.type} · ${entry.quantityValue} ${entry.unit}${entry.revenue !== undefined && entry.revenue > 0 ? `\nTotal Revenue: ₱${Math.round(entry.revenue).toLocaleString('en-PH')}` : (entry.isSold === false ? '\nStatus: Not sold' : '')}\n${new Date(entry.createdAt).toLocaleString()}\nStatus: ${entry.status}${entry.species ? '\nSpecies: ' + entry.species : ''}${entry.notes ? '\nNotes: ' + entry.notes : ''}`)}><Text style={styles.swipeActionText}>View Details</Text></TouchableOpacity>
             <TouchableOpacity style={[styles.swipeActionButton, styles.editAction]} onPress={() => handleEditEntry(entry)}>
               <Ionicons name="create-outline" size={16} color="#fff" />
               <Text style={styles.swipeActionText}>Edit</Text>
@@ -1354,41 +1411,132 @@ export default function DataEntryScreen() {
         )}
 
         {selectedType === 'harvest' && (
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Harvest Type</Text>
-            <View style={styles.harvestTypeContainer}>
-              <TouchableOpacity
-                style={[styles.harvestTypeButton, isPartialHarvest && styles.harvestTypeButtonActive]}
-                onPress={() => setIsPartialHarvest(true)}
-              >
-                <Text style={[styles.harvestTypeText, isPartialHarvest && styles.harvestTypeTextActive]}>Partial</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.harvestTypeButton, !isPartialHarvest && styles.harvestTypeButtonActive]}
-                onPress={() => setIsPartialHarvest(false)}
-              >
-                <Text style={[styles.harvestTypeText, !isPartialHarvest && styles.harvestTypeTextActive]}>Full</Text>
-              </TouchableOpacity>
+          <>
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Harvest Type</Text>
+              <View style={styles.harvestTypeContainer}>
+                <TouchableOpacity
+                  style={[styles.harvestTypeButton, isPartialHarvest && styles.harvestTypeButtonActive]}
+                  onPress={() => setIsPartialHarvest(true)}
+                >
+                  <Text style={[styles.harvestTypeText, isPartialHarvest && styles.harvestTypeTextActive]}>Partial</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.harvestTypeButton, !isPartialHarvest && styles.harvestTypeButtonActive]}
+                  onPress={() => setIsPartialHarvest(false)}
+                >
+                  <Text style={[styles.harvestTypeText, !isPartialHarvest && styles.harvestTypeTextActive]}>Full</Text>
+                </TouchableOpacity>
+              </View>
+
+              {isPartialHarvest && (
+                <View style={{ marginTop: 10 }}>
+                  <View style={styles.labelRow}>
+                    <Text style={styles.label}>Fish Count</Text>
+                    <Text style={styles.optionalLabel}>Optional</Text>
+                  </View>
+                  <TextInput
+                    style={styles.input}
+                    value={fishCount}
+                    onChangeText={setFishCount}
+                    placeholder="Enter fish count"
+                    keyboardType="numeric"
+                    placeholderTextColor="#98a2b3"
+                    onFocus={() => focusField('fishCount')}
+                  />
+                </View>
+              )}
             </View>
 
-            {isPartialHarvest && (
-              <View style={{ marginTop: 10 }}>
-                <View style={styles.labelRow}>
-                  <Text style={styles.label}>Fish Count</Text>
-                  <Text style={styles.optionalLabel}>Optional</Text>
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Sale Status</Text>
+              <View style={styles.harvestTypeContainer}>
+                <TouchableOpacity
+                  style={[styles.harvestTypeButton, isSold && styles.harvestTypeButtonActive]}
+                  onPress={() => setIsSold(true)}
+                >
+                  <Text style={[styles.harvestTypeText, isSold && styles.harvestTypeTextActive]}>Sold</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.harvestTypeButton, !isSold && styles.harvestTypeButtonActive]}
+                  onPress={() => {
+                    setIsSold(false);
+                    setSellingPrice('');
+                  }}
+                >
+                  <Text style={[styles.harvestTypeText, !isSold && styles.harvestTypeTextActive]}>Not Sold</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {isSold ? (
+              <>
+                <View
+                  style={styles.inputGroup}
+                  onLayout={(event) => registerFieldLayout('sellingPrice', event.nativeEvent.layout.y)}
+                >
+                  <View style={styles.labelRow}>
+                    <Text style={styles.label}>Selling Price per Kilogram (₱)</Text>
+                    <Text style={styles.requiredIndicator}>*</Text>
+                  </View>
+                  <View style={styles.currencyInputContainer}>
+                    <Text style={styles.currencyPrefix}>₱</Text>
+                    <TextInput
+                      style={styles.currencyInput}
+                      value={sellingPrice}
+                      onChangeText={setSellingPrice}
+                      placeholder="0.00"
+                      keyboardType="decimal-pad"
+                      placeholderTextColor="#98a2b3"
+                      onFocus={() => focusField('sellingPrice')}
+                    />
+                  </View>
                 </View>
-                <TextInput
-                  style={styles.input}
-                  value={fishCount}
-                  onChangeText={setFishCount}
-                  placeholder="Enter fish count"
-                  keyboardType="numeric"
-                  placeholderTextColor="#98a2b3"
-                  onFocus={() => focusField('fishCount')}
-                />
+
+                <View style={styles.inputGroup}>
+                  <View style={styles.labelRow}>
+                    <Text style={styles.label}>Total Revenue (₱)</Text>
+                    <Text style={styles.optionalLabel}>Auto-calculated</Text>
+                  </View>
+                  <View style={styles.calculatedRevenueCard}>
+                    <View style={styles.calculatedRevenueHeader}>
+                      <View style={styles.calculatedRevenueIconCircle}>
+                        <Ionicons name="cash-outline" size={18} color={aquapinColors.green} />
+                      </View>
+                      <Text style={styles.calculatedRevenueValue}>
+                        {`₱${calculatedTotalRevenue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                      </Text>
+                    </View>
+                    <Text style={styles.calculatedRevenueHint}>
+                      {parsedHarvestWeight > 0 && parsedSellingPrice > 0
+                        ? `${parsedHarvestWeight.toLocaleString('en-PH')} kg × ₱${parsedSellingPrice.toFixed(2)}/kg`
+                        : 'Calculated from harvested weight multiplied by selling price'}
+                    </Text>
+                  </View>
+                </View>
+              </>
+            ) : (
+              <View style={styles.inputGroup}>
+                <View style={styles.labelRow}>
+                  <Text style={styles.label}>Total Revenue (₱)</Text>
+                  <Text style={styles.optionalLabel}>Not Sold</Text>
+                </View>
+                <View style={[styles.calculatedRevenueCard, styles.calculatedRevenueCardUnsold]}>
+                  <View style={styles.calculatedRevenueHeader}>
+                    <View style={[styles.calculatedRevenueIconCircle, styles.calculatedRevenueIconCircleUnsold]}>
+                      <Ionicons name="ban-outline" size={18} color={aquapinColors.textMuted} />
+                    </View>
+                    <Text style={[styles.calculatedRevenueValue, { color: aquapinColors.textMuted }]}>
+                      ₱0.00
+                    </Text>
+                  </View>
+                  <Text style={styles.calculatedRevenueHint}>
+                    Harvest is not sold (excluded from Dashboard revenue total)
+                  </Text>
+                </View>
               </View>
             )}
-          </View>
+          </>
         )}
 
         <View
@@ -1424,7 +1572,8 @@ export default function DataEntryScreen() {
     }
     if (visibleSegment !== 'recent') return [];
     const rows: WorkspaceRow[] = [];
-    for (const group of ['Today', 'Yesterday', 'Earlier'] as const) {
+    const groups = oldestFirst ? ['Earlier', 'Yesterday', 'Today'] as const : ['Today', 'Yesterday', 'Earlier'] as const;
+    for (const group of groups) {
       const entries = groupedRecentEntries[group];
       if (!entries.length) continue;
       rows.push({ id: `group:${group}`, kind: 'group', group, count: entries.length });
@@ -1433,7 +1582,7 @@ export default function DataEntryScreen() {
       }
     }
     return rows;
-  }, [visibleSegment, selectedPondId, isHistoryBusy, filteredHistoryRows, queueEntries, groupedRecentEntries, collapsedGroups]);
+  }, [visibleSegment, selectedPondId, isHistoryBusy, filteredHistoryRows, queueEntries, groupedRecentEntries, collapsedGroups, oldestFirst]);
 
   const renderTransactionRow = ({ item: row }: { item: WorkspaceRow }) => {
     if (row.kind === 'entry') return renderSwipeEntryRow(row.entry);
@@ -2190,6 +2339,72 @@ const styles = StyleSheet.create({
   },
   harvestTypeTextActive: {
     color: '#fff',
+  },
+  requiredIndicator: {
+    color: aquapinColors.red,
+    fontSize: 13,
+    fontWeight: '800',
+    marginLeft: 4,
+  },
+  currencyInputContainer: {
+    backgroundColor: aquapinColors.surfaceMuted,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: aquapinColors.border,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  currencyPrefix: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: aquapinColors.blue,
+    marginRight: 6,
+  },
+  currencyInput: {
+    flex: 1,
+    paddingVertical: 14,
+    color: aquapinColors.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  calculatedRevenueCard: {
+    backgroundColor: aquapinColors.greenSoft,
+    borderRadius: 18,
+    borderWidth: 1.2,
+    borderColor: '#c6e8b4',
+    padding: 14,
+  },
+  calculatedRevenueCardUnsold: {
+    backgroundColor: aquapinColors.surfaceMuted,
+    borderColor: aquapinColors.border,
+  },
+  calculatedRevenueHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  calculatedRevenueIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: 'rgba(102, 184, 63, 0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calculatedRevenueIconCircleUnsold: {
+    backgroundColor: 'rgba(111, 130, 152, 0.14)',
+  },
+  calculatedRevenueValue: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: aquapinColors.green,
+  },
+  calculatedRevenueHint: {
+    fontSize: 11.5,
+    color: aquapinColors.textMuted,
+    marginTop: 6,
+    lineHeight: 16,
   },
   filterShell: {
     backgroundColor: aquapinColors.surface,

@@ -1759,27 +1759,9 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>{t.dataTools}</Text>
 
-          <TouchableOpacity style={[styles.menuItem, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => openReportRangePicker('csv')}>
-            <Ionicons name="document-text-outline" size={20} color="#0369a1" />
-            <Text style={[styles.menuText, { color: colors.textSubtle }]}>{t.exportCsv}</Text>
-            <Ionicons name="share-social-outline" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-
           <TouchableOpacity style={[styles.menuItem, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => openReportRangePicker('pdf')}>
-            <Ionicons name="document-outline" size={20} color="#6d28d9" />
-            <Text style={[styles.menuText, { color: colors.textSubtle }]}>{t.exportPdfSummary}</Text>
-            <Ionicons name="share-social-outline" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={[styles.menuItem, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={createBackup}>
-            <Ionicons name="save-outline" size={20} color="#ea580c" />
-            <Text style={[styles.menuText, { color: colors.textSubtle }]}>{t.createBackup}</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={[styles.menuItem, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={restoreBackup}>
-            <Ionicons name="refresh-outline" size={20} color="#0f766e" />
-            <Text style={[styles.menuText, { color: colors.textSubtle }]}>{t.restoreBackup}</Text>
+            <Ionicons name="document-text-outline" size={20} color="#0d9488" />
+            <Text style={[styles.menuText, { color: colors.textSubtle }]}>Export PDF</Text>
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </TouchableOpacity>
         </View>
@@ -1791,6 +1773,14 @@ export default function ProfileScreen() {
             <Text style={[styles.menuText, { color: colors.textSubtle }]}>{t.searchFaqReportIssue}</Text>
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.menuItem, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            onPress={() => Alert.alert('AquaPin Mobile', 'Version 2.0.0 (Production Build)\nAll systems operational.')}
+          >
+            <Ionicons name="information-circle-outline" size={20} color="#0284c7" />
+            <Text style={[styles.menuText, { color: colors.textSubtle }]}>App Version</Text>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: '#0284c7' }}>v2.0.0</Text>
+          </TouchableOpacity>
         </View>
 
         {actionLoading && (
@@ -1799,8 +1789,6 @@ export default function ProfileScreen() {
             <Text style={[styles.loadingBannerText, { color: colors.loadingText }]}>{loadingBannerCopy}</Text>
           </View>
         )}
-
-        <Text style={[styles.version, { color: colors.textMuted }]}>{t.version}</Text>
       </ScrollView>
     </SafeAreaView>
   );

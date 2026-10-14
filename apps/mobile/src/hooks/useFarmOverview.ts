@@ -130,6 +130,24 @@ export function useFarmOverview() {
         ? Math.max(0, ((totalStocked - totalMortality) / totalStocked) * 100)
         : null;
 
+      // Automatically update revenue using saved harvest transactions.
+      // If a harvest is not sold, do not include it in the revenue total.
+      const totalRevenue = (harvests as any[]).reduce((sum, harvest) => {
+        const isSold = harvest.isSold ?? harvest.is_sold;
+        if (isSold === false) return sum;
+
+        const rev = Number(harvest.totalRevenue ?? harvest.total_revenue ?? 0);
+        if (rev > 0) return sum + rev;
+
+        const price = Number(harvest.pricePerKg ?? harvest.price_per_kg ?? 0);
+        const kg = Number(harvest.yieldKg ?? harvest.yield_kg ?? 0);
+        if (price > 0 && kg > 0) {
+          return sum + (price * kg);
+        }
+
+        return sum;
+      }, 0);
+
       const recentActivities = [
         ...(stockingLogs as any[]).map((log) => ({
           id: toId(log.id),
@@ -151,16 +169,23 @@ export function useFarmOverview() {
           amount: `${Math.round(Number(log.quantity || 0)).toLocaleString('en-PH')} fish`,
           createdAt: toTimestamp(log.createdAt),
         })),
-        ...(harvests as any[]).map((harvest) => ({
-          id: toId(harvest.id),
-          pondId: toId(harvest.pondId),
-          pondName: pondNameMap.get(toId(harvest.pondId)) || 'Unnamed Pond',
-          type: 'harvest' as const,
-          title: 'Harvest',
-          subtitle: pondNameMap.get(toId(harvest.pondId)) || 'Unnamed Pond',
-          amount: `${Math.round(Number(harvest.yieldKg || 0)).toLocaleString('en-PH')} kg`,
-          createdAt: toTimestamp(harvest.createdAt),
-        })),
+        ...(harvests as any[]).map((harvest) => {
+          const yieldKg = Math.round(Number(harvest.yieldKg || 0));
+          const isSold = harvest.isSold ?? harvest.is_sold;
+          const rev = Number(harvest.totalRevenue ?? harvest.total_revenue ?? (isSold !== false ? (Number(harvest.yieldKg || 0) * Number(harvest.pricePerKg || harvest.price_per_kg || 0)) : 0));
+          const revenueText = isSold !== false && rev > 0 ? ` • ₱${Math.round(rev).toLocaleString('en-PH')}` : (isSold === false ? ' • Unsold' : '');
+
+          return {
+            id: toId(harvest.id),
+            pondId: toId(harvest.pondId),
+            pondName: pondNameMap.get(toId(harvest.pondId)) || 'Unnamed Pond',
+            type: 'harvest' as const,
+            title: 'Harvest',
+            subtitle: pondNameMap.get(toId(harvest.pondId)) || 'Unnamed Pond',
+            amount: `${yieldKg.toLocaleString('en-PH')} kg${revenueText}`,
+            createdAt: toTimestamp(harvest.createdAt),
+          };
+        }),
       ]
         .sort((a, b) => b.createdAt - a.createdAt)
         .slice(0, 8);
@@ -179,7 +204,7 @@ export function useFarmOverview() {
         totalMortality,
         totalHarvestKg,
         survivalRate,
-        estimatedRevenue: totalHarvestKg * AVG_PRICE_PER_KG,
+        estimatedRevenue: totalRevenue,
         latestActivityAt,
         pondPreview,
         recentActivities,

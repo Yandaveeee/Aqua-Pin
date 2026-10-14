@@ -164,7 +164,6 @@ Create `apps/mobile/.env`:
 EXPO_PUBLIC_SUPABASE_URL=your-supabase-url
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
 EXPO_PUBLIC_MAPS_API_KEY=your-maps-api-key
-EXPO_PUBLIC_GROQ_API_KEY=your-groq-api-key
 EXPO_PUBLIC_AUTH_EMAIL_REDIRECT_URL=aquapin://auth/callback
 ```
 
@@ -176,7 +175,6 @@ Required mobile variables:
 Optional mobile variables:
 
 - `EXPO_PUBLIC_MAPS_API_KEY`
-- `EXPO_PUBLIC_GROQ_API_KEY`
 - `EXPO_PUBLIC_AUTH_EMAIL_REDIRECT_URL`
 
 ## Getting Started
@@ -296,3 +294,32 @@ Tracked operational entities in the current codebase include:
 
 - `apps/mobile/README.md` contains older mobile-specific implementation notes.
 - Some repository areas still contain legacy naming or prototype logic, especially in marketing copy and edge-function internals. Treat this root README as the system-level guide to the current intended structure.
+
+## AquaPin mobile improvements
+
+Account Preferences now saves explicitly, disables unchanged or pending saves, and restores settings on restart. English and Filipino apply to supported navigation, preference, AI action, and sync labels; remaining legacy screen text stays in English. Preferences are device-local. AI conversations are stored locally under separate account keys, can be reopened, and are kept separate when starting a new chat.
+
+The assistant reads an account-filtered snapshot of local pond, stocking, mortality, harvest and activity records, including offline changes. Each table is limited to 100 records with a truncation flag; it must not present a partial sample as a complete total. Its authenticated backend classifies topic scope before answering, uses conversation history for follow-ups, and explicitly prohibits invented AquaPin records. Model-based classification and grounding reduce mistakes but cannot guarantee perfect answers.
+
+Deploy the new AI endpoint before distributing the updated mobile build:
+
+```bash
+# Configure GROQ_API_KEY using Supabase's secret manager.
+# Optional server secret: GROQ_MODEL (default: openai/gpt-oss-20b).
+supabase functions deploy ai-chat
+```
+
+The mobile app uses its existing Supabase URL, anon key and signed-in session. No database migration is required. The existing `ai-reports` function remains unchanged. A Groq key previously shipped in an `EXPO_PUBLIC_` variable should be replaced with a server-only key.
+
+Existing mapped ponds open actions. Edit Boundary loads existing points and supports dragging, adding/removing points, moving the entire boundary, canceling and confirmed saving. Edit Location repositions the existing marker. Changes retain the pond ID and use the existing queue. A durable edit journal recovers interrupted local writes; creates retain a stable remote UUID through retries. The Recent Activities section includes creation, mapping, record and synchronization events. Clear Activities hides the displayed history on this device, preserving the underlying pond records and audit history.
+
+Records also supports text search, oldest/newest sorting, and explicit details. Profile includes an editable display name through the existing authentication API.
+
+Validation:
+
+```bash
+npm run typecheck -w apps/mobile
+npm test -w apps/mobile
+```
+
+Tests cover account isolation, conversation restoration, off-topic refusal, backend error handling, native Markdown tables, invalid boundaries, interrupted mapping saves, stable sync IDs and activity idempotency, alongside existing authentication and offline-data regressions. Before release, test map dragging on Android/iOS, language restoration after restart, offline edit/reconnect, and the deployed AI endpoint on a signed-in device.

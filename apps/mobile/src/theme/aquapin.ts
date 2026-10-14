@@ -44,8 +44,8 @@ export function formatPercent(value: number | null | undefined): string {
 }
 
 export function formatCurrencyPhp(value: number): string {
-  if (!Number.isFinite(value)) return 'PHP 0';
-  return `PHP ${Math.round(value).toLocaleString('en-PH')}`;
+  if (!Number.isFinite(value)) return '₱0';
+  return `₱${Math.round(value).toLocaleString('en-PH')}`;
 }
 
 export function formatRelativeTime(timestamp: number | null | undefined): string {

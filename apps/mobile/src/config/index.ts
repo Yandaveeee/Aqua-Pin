@@ -1,7 +1,6 @@
 const SUPABASE_URL = (process.env.EXPO_PUBLIC_SUPABASE_URL || '').trim();
 const SUPABASE_ANON_KEY = (process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '').trim();
 const MAPS_API_KEY = (process.env.EXPO_PUBLIC_MAPS_API_KEY || '').trim();
-const GROQ_API_KEY = (process.env.EXPO_PUBLIC_GROQ_API_KEY || '').trim();
 const AUTH_EMAIL_REDIRECT_URL = (
   process.env.EXPO_PUBLIC_AUTH_EMAIL_REDIRECT_URL || 'aquapin://auth/callback'
 ).trim();
@@ -14,10 +13,6 @@ export const CONFIG = {
   },
   auth: {
     emailRedirectUrl: AUTH_EMAIL_REDIRECT_URL,
-  },
-  ai: {
-    groqApiKey: GROQ_API_KEY,
-    model: (process.env.EXPO_PUBLIC_GROQ_MODEL || '').trim() || 'openai/gpt-oss-20b',
   },
   mapsApiKey: MAPS_API_KEY,
 };
