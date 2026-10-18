@@ -15,16 +15,18 @@ import {
   KeyboardEvent,
   ScrollView,
   Dimensions,
+  Linking,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, Region, MapPressEvent, MapType, Polygon, Polyline, UrlTile, PROVIDER_GOOGLE, PROVIDER_DEFAULT } from 'react-native-maps';
 import * as Location from 'expo-location';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { usePonds, useCreatePond, useUpdatePond } from '../hooks/useOfflineData';
+import { usePonds, useCreatePond, useUpdatePond, usePondHistory } from '../hooks/useOfflineData';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { LeafletMapView, LeafletMapViewRef } from '../components/LeafletMapView';
+import { aquapinColors, aquapinRadius, formatCurrencyPhp, formatWholeNumber } from '../theme/aquapin';
 
 // Types
 interface Coordinate {
@@ -151,6 +153,81 @@ function parseBoundary(boundary: unknown): Coordinate[] {
   }
 }
 
+function formatDate(value: unknown): string {
+  if (!value) return 'Unknown';
+  const parsed = typeof value === 'number' ? new Date(value) : new Date(value as any);
+  if (Number.isNaN(parsed.getTime())) return 'Unknown';
+  return parsed.toLocaleDateString('en-PH', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function getTimestamp(value: unknown): number {
+  if (!value) return 0;
+  if (typeof value === 'number') return value;
+  const time = new Date(value as any).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function parseEventData(eventData: unknown): any {
+  if (typeof eventData !== 'string') return {};
+  try {
+    return JSON.parse(eventData);
+  } catch (_error) {
+    return {};
+  }
+}
+
+function getCycleDays(species: string): number {
+  const map: Record<string, number> = {
+    tilapia: 150,
+    'milkfish (bangus)': 165,
+    milkfish: 165,
+    'catfish (hito)': 130,
+    catfish: 130,
+    carp: 180,
+    'shrimp (sugpo)': 120,
+    shrimp: 120,
+    seabass: 190,
+    grouper: 220,
+  };
+  return map[(species || '').toLowerCase()] || 150;
+}
+
+function getAverageHarvestWeightKg(species: string): number {
+  const map: Record<string, number> = {
+    tilapia: 0.45,
+    'milkfish (bangus)': 0.55,
+    milkfish: 0.55,
+    'catfish (hito)': 0.6,
+    catfish: 0.6,
+    carp: 0.8,
+    'shrimp (sugpo)': 0.03,
+    shrimp: 0.03,
+    seabass: 0.9,
+    grouper: 1.1,
+  };
+  return map[(species || '').toLowerCase()] || 0.5;
+}
+
+function getPricePerKgPhp(species: string): number {
+  const map: Record<string, number> = {
+    tilapia: 145,
+    'milkfish (bangus)': 180,
+    milkfish: 180,
+    'catfish (hito)': 165,
+    catfish: 165,
+    carp: 140,
+    'shrimp (sugpo)': 400,
+    shrimp: 400,
+    seabass: 320,
+    grouper: 450,
+  };
+  return map[(species || '').toLowerCase()] || 160;
+}
+
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const route = useRoute<any>();
@@ -171,6 +248,7 @@ export default function MapScreen() {
   const [polygonPoints, setPolygonPoints] = useState<Coordinate[]>([]);
   const [mapMode, setMapMode] = useState<MapMode>('view');
   const [modalVisible, setModalVisible] = useState(false);
+  const [addModeModalVisible, setAddModeModalVisible] = useState(false);
   const [pondName, setPondName] = useState('');
   const [loading, setLoading] = useState(false);
   const [locating, setLocating] = useState(false);
@@ -180,6 +258,153 @@ export default function MapScreen() {
   const createPond = useCreatePond();
   const updatePond = useUpdatePond();
   const [selectedMappedId, setSelectedMappedId] = useState<string | null>(null);
+  const [detailsPondId, setDetailsPondId] = useState<string | null>(null);
+  const [detailsEditingName, setDetailsEditingName] = useState<string | null>(null);
+  const [detailsSavingPond, setDetailsSavingPond] = useState(false);
+  const detailsSavePondLock = useRef(false);
+
+  const selectedDetailsPond = useMemo(
+    () => (ponds as any[]).find((p) => p.id === detailsPondId) || null,
+    [ponds, detailsPondId]
+  );
+  const { history: detailsPondHistory } = usePondHistory(detailsPondId || '');
+
+  useEffect(() => {
+    setDetailsEditingName(null);
+  }, [detailsPondId]);
+
+  const isDetailsPondActive = Boolean(
+    selectedDetailsPond?.isActive || Number(selectedDetailsPond?.currentStockCount) > 0
+  );
+
+  const detailsPondCoords = useMemo(() => {
+    if (!selectedDetailsPond) return null;
+    return parseLocation(selectedDetailsPond.location || '');
+  }, [selectedDetailsPond]);
+
+  const saveDetailsPondChanges = async (changes: { name?: string }) => {
+    if (!detailsPondId || !user || detailsSavePondLock.current) return;
+    detailsSavePondLock.current = true;
+    setDetailsSavingPond(true);
+    try {
+      await updatePond(detailsPondId, changes, user.id);
+      setDetailsEditingName(null);
+      Alert.alert('Saved', 'Pond name updated successfully.');
+    } catch {
+      Alert.alert('Unable to save', 'Please try saving again.');
+    } finally {
+      detailsSavePondLock.current = false;
+      setDetailsSavingPond(false);
+    }
+  };
+
+  const openNavigation = useCallback(async (target: Coordinate) => {
+    const destination = `${target.latitude},${target.longitude}`;
+    const androidUrl = `google.navigation:q=${destination}`;
+    const iosUrl = `http://maps.apple.com/?daddr=${destination}&dirflg=d`;
+    const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${destination}`;
+
+    const primaryUrl = Platform.OS === 'android' ? androidUrl : iosUrl;
+    try {
+      const canOpenPrimary = await Linking.canOpenURL(primaryUrl);
+      if (canOpenPrimary) {
+        await Linking.openURL(primaryUrl);
+        return;
+      }
+      await Linking.openURL(webUrl);
+    } catch (_error) {
+      await Linking.openURL(webUrl);
+    }
+  }, []);
+
+  const openDetailsPondRecords = (type?: string) => {
+    const currentId = detailsPondId;
+    setDetailsPondId(null);
+    navigation.navigate('RecordsWorkspace', {
+      pondId: currentId,
+      initialType: type,
+      initialSegment: type ? 'log' : 'recent',
+      requestKey: Date.now(),
+    });
+  };
+
+  const detailsPondKpis = useMemo(() => {
+    if (!selectedDetailsPond) return null;
+
+    let totalStocked = 0;
+    let totalMortality = 0;
+    let totalHarvestKg = 0;
+    let latestStockingAt = 0;
+    let latestStockingSpecies = '';
+
+    detailsPondHistory.forEach((event: any) => {
+      const data = parseEventData(event.eventData);
+      const createdAt = getTimestamp(event.createdAt);
+
+      if (event.eventType === 'stocking') {
+        const quantity = Number(data.quantity) || 0;
+        totalStocked += quantity;
+        if (createdAt > latestStockingAt) {
+          latestStockingAt = createdAt;
+          latestStockingSpecies = data.species || '';
+        }
+      } else if (event.eventType === 'mortality') {
+        totalMortality += Number(data.quantity) || 0;
+      } else if (event.eventType === 'harvest') {
+        totalHarvestKg += Number(data.yieldKg) || 0;
+      }
+    });
+
+    const survivalRate =
+      totalStocked > 0 ? Math.max(0, Math.min(100, ((totalStocked - totalMortality) / totalStocked) * 100)) : null;
+
+    const species = selectedDetailsPond.currentSpecies || latestStockingSpecies || '';
+    const cycleDays = getCycleDays(species);
+    const projectedHarvestDate =
+      latestStockingAt > 0 ? new Date(latestStockingAt + cycleDays * 24 * 60 * 60 * 1000) : null;
+
+    const currentStock = Number(selectedDetailsPond.currentStockCount || 0);
+    const averageWeight = getAverageHarvestWeightKg(species);
+    const pricePerKg = getPricePerKgPhp(species);
+    const projectedHarvestValue =
+      currentStock > 0 ? currentStock * averageWeight * pricePerKg : null;
+
+    return {
+      totalStocked,
+      totalMortality,
+      totalHarvestKg,
+      survivalRate,
+      projectedHarvestDate,
+      projectedHarvestValue,
+    };
+  }, [selectedDetailsPond, detailsPondHistory]);
+
+  const detailsSmartAlerts = useMemo(() => {
+    if (!selectedDetailsPond) return [];
+    const alerts: Array<{ level: 'critical' | 'warning' | 'info'; title: string; message: string }> = [];
+    const active = Boolean(selectedDetailsPond.isActive || Number(selectedDetailsPond.currentStockCount) > 0);
+
+    if (!active) {
+      alerts.push({
+        level: 'info',
+        title: 'Pond is Inactive',
+        message: 'This pond is currently inactive. Activate it when beginning a new production cycle.',
+      });
+      return alerts;
+    }
+
+    const stockCount = Number(selectedDetailsPond.currentStockCount || 0);
+    if (stockCount < 1000) {
+      alerts.push({
+        level: 'critical',
+        title: 'Low Stock Level',
+        message: `Current estimated stock is ${stockCount} fish. Check pond condition and plan next actions.`,
+      });
+    }
+
+    return alerts;
+  }, [selectedDetailsPond]);
+
   const [editingPondId, setEditingPondId] = useState<string | null>(null);
   const saveLock = useRef(false);
   const [movingBoundary, setMovingBoundary] = useState(false);
@@ -515,27 +740,7 @@ export default function MapScreen() {
   };
 
   const showModeSelector = () => {
-    Alert.alert(
-      'Add Pond',
-      'How would you like to mark the pond?',
-      [
-        {
-          text: '📍 Single Point',
-          onPress: () => {
-            setMapMode('point');
-            setPolygonPoints([]);
-          },
-        },
-        {
-          text: '⬡ Draw Boundary',
-          onPress: () => {
-            setMapMode('polygon');
-            setSelectedLocation(null);
-          },
-        },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
+    setAddModeModalVisible(true);
   };
 
   const cancelEditing = () => {
@@ -836,14 +1041,100 @@ export default function MapScreen() {
               <Text style={styles.editHintText}>{editHintText}</Text>
             </View>
 
-            {mapMode === 'polygon' && <View>
-              <Text>{movingBoundary ? 'Tap the map to place the boundary center.' : 'Drag a point to move it. Tap the map to add a point.'}</Text>
-              {polygonPoints.length >= 3 && <TouchableOpacity style={{ padding: 12 }} onPress={() => { setMovingBoundary(!movingBoundary); setSelectedVertex(null); }}><Text>{movingBoundary ? 'Cancel Move' : 'Move Whole Boundary'}</Text></TouchableOpacity>}
-              <ScrollView horizontal>{polygonPoints.map((_, i) => <TouchableOpacity key={i} onPress={() => setSelectedVertex(i)} style={{ padding: 12, backgroundColor: selectedVertex === i ? '#bfdbfe' : '#fff' }}><Text>Point {i + 1}</Text></TouchableOpacity>)}</ScrollView>
-              {selectedVertex !== null && <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}><Text>Tap map to move point {selectedVertex + 1}.</Text><TouchableOpacity style={{ padding: 12 }} onPress={() => { setPolygonPoints(prev => prev.filter((_, i) => i !== selectedVertex)); setSelectedVertex(null); }}><Text>Remove Point</Text></TouchableOpacity><TouchableOpacity style={{ padding: 12 }} onPress={() => {
-                setPolygonPoints(prev => { const a = prev[selectedVertex], b = prev[(selectedVertex + 1) % prev.length]; if (!a || !b) return prev; return [...prev.slice(0, selectedVertex + 1), { latitude: (a.latitude + b.latitude) / 2, longitude: (a.longitude + b.longitude) / 2 }, ...prev.slice(selectedVertex + 1)]; }); setSelectedVertex(null);
-              }}><Text>Add Point After</Text></TouchableOpacity><TouchableOpacity style={{ padding: 12 }} onPress={() => setSelectedVertex(null)}><Text>Done</Text></TouchableOpacity></View>}
-            </View>}
+            {mapMode === 'polygon' && (
+              <View style={styles.polygonEditBar}>
+                <Text style={styles.polygonHelpText}>
+                  {movingBoundary
+                    ? 'Tap the map to place the boundary center.'
+                    : 'Drag a point to move it. Tap the map to add a point.'}
+                </Text>
+                {polygonPoints.length >= 3 && (
+                  <TouchableOpacity
+                    style={styles.polygonActionPill}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      setMovingBoundary(!movingBoundary);
+                      setSelectedVertex(null);
+                    }}
+                  >
+                    <Ionicons
+                      name={movingBoundary ? 'close-circle-outline' : 'move-outline'}
+                      size={15}
+                      color={aquapinColors.blue}
+                    />
+                    <Text style={styles.polygonActionPillText}>
+                      {movingBoundary ? 'Cancel Move' : 'Move Whole Boundary'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.vertexScroll}>
+                  {polygonPoints.map((_, i) => (
+                    <TouchableOpacity
+                      key={i}
+                      onPress={() => setSelectedVertex(i)}
+                      style={[
+                        styles.vertexChip,
+                        selectedVertex === i && styles.vertexChipActive,
+                      ]}
+                      activeOpacity={0.85}
+                    >
+                      <Text
+                        style={[
+                          styles.vertexChipText,
+                          selectedVertex === i && styles.vertexChipTextActive,
+                        ]}
+                      >
+                        Point {i + 1}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                {selectedVertex !== null && (
+                  <View style={styles.vertexActionRow}>
+                    <Text style={styles.vertexSelectedHint}>
+                      Tap map to move Point {selectedVertex + 1}.
+                    </Text>
+                    <View style={styles.vertexButtons}>
+                      <TouchableOpacity
+                        style={styles.vertexDeleteBtn}
+                        onPress={() => {
+                          setPolygonPoints((prev) => prev.filter((_, i) => i !== selectedVertex));
+                          setSelectedVertex(null);
+                        }}
+                      >
+                        <Ionicons name="trash-outline" size={14} color={aquapinColors.red} />
+                        <Text style={styles.vertexDeleteBtnText}>Remove</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.vertexAddAfterBtn}
+                        onPress={() => {
+                          setPolygonPoints((prev) => {
+                            const a = prev[selectedVertex];
+                            const b = prev[(selectedVertex + 1) % prev.length];
+                            if (!a || !b) return prev;
+                            return [
+                              ...prev.slice(0, selectedVertex + 1),
+                              { latitude: (a.latitude + b.latitude) / 2, longitude: (a.longitude + b.longitude) / 2 },
+                              ...prev.slice(selectedVertex + 1),
+                            ];
+                          });
+                          setSelectedVertex(null);
+                        }}
+                      >
+                        <Ionicons name="add-circle-outline" size={14} color={aquapinColors.teal} />
+                        <Text style={styles.vertexAddAfterBtnText}>Add After</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.vertexDoneBtn}
+                        onPress={() => setSelectedVertex(null)}
+                      >
+                        <Text style={styles.vertexDoneBtnText}>Done</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
             <View style={styles.editButtonsRow}>
               {mapMode === 'polygon' && polygonPoints.length > 0 && (
                 <TouchableOpacity style={styles.undoButton} onPress={undoLastPoint}>
@@ -871,15 +1162,553 @@ export default function MapScreen() {
         )}
       </SafeAreaView>
 
-      <Modal visible={!!selectedMappedId} transparent animationType="fade" onRequestClose={() => setSelectedMappedId(null)}>
-        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: '#0006' }}><View style={{ backgroundColor: '#fff', padding: 24, paddingBottom: 32, borderRadius: 24 }}>
-          <Text style={{ fontSize: 22, fontWeight: '700' }}>{ponds.find(p => p.id === selectedMappedId)?.name}</Text>
-          <Text>{mappedPonds.find(p => p.id === selectedMappedId)?.boundary.length ? 'Boundary: Mapped' : mappedPonds.some(p => p.id === selectedMappedId) ? 'Location: Marked' : 'Location: Not mapped'}</Text>
-          <TouchableOpacity style={{ padding: 16 }} onPress={() => { const id = selectedMappedId; setSelectedMappedId(null); navigation.navigate('PondWorkspace', { pondId: id, requestKey: Date.now() }); }}><Text>View Details / Records / Activities</Text></TouchableOpacity>
-          <TouchableOpacity style={{ padding: 16 }} onPress={() => beginMappingEdit()}><Text>{mappedPonds.find(p => p.id === selectedMappedId)?.boundary.length ? 'Edit Boundary' : mappedPonds.some(p => p.id === selectedMappedId) ? 'Edit Location' : 'Mark Location'}</Text></TouchableOpacity>
-          {!mappedPonds.find(p => p.id === selectedMappedId)?.boundary.length && <TouchableOpacity style={{ padding: 16 }} onPress={() => beginMappingEdit(true)}><Text>Add Boundary</Text></TouchableOpacity>}
-          <TouchableOpacity style={{ padding: 16 }} onPress={() => setSelectedMappedId(null)}><Text>Close</Text></TouchableOpacity>
-        </View></View>
+      {/* Selected Pond Bottom Sheet Modal (Enhanced UI/UX) */}
+      <Modal
+        visible={Boolean(selectedMappedId)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelectedMappedId(null)}
+      >
+        <View style={styles.sheetOverlay}>
+          <View style={styles.sheetContainer}>
+            {(() => {
+              const clickedPond = ponds.find((p) => p.id === selectedMappedId);
+              const clickedMapped = mappedPonds.find((p) => p.id === selectedMappedId);
+              const isPondActive = clickedPond?.isActive || Number(clickedPond?.currentStockCount) > 0;
+
+              return (
+                <>
+                  <View style={styles.sheetHeader}>
+                    <View style={styles.sheetTitleGroup}>
+                      <View
+                        style={[
+                          styles.sheetIconWrap,
+                          {
+                            backgroundColor: isPondActive
+                              ? aquapinColors.blueSoft
+                              : aquapinColors.surfaceMuted,
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name="water"
+                          size={22}
+                          color={isPondActive ? aquapinColors.blue : aquapinColors.textMuted}
+                        />
+                      </View>
+                      <View style={styles.sheetTitleWrap}>
+                        <Text style={styles.sheetPondName} numberOfLines={1}>
+                          {clickedPond?.name || 'Pond Details'}
+                        </Text>
+                        <View style={styles.sheetBadgeRow}>
+                          <View
+                            style={[
+                              styles.sheetStatusBadge,
+                              isPondActive
+                                ? styles.sheetStatusActive
+                                : styles.sheetStatusInactive,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.sheetStatusText,
+                                isPondActive
+                                  ? styles.sheetStatusTextActive
+                                  : styles.sheetStatusTextInactive,
+                              ]}
+                            >
+                              {isPondActive ? 'Active' : 'Inactive'}
+                            </Text>
+                          </View>
+                          <View style={styles.sheetMappingBadge}>
+                            <Ionicons
+                              name={clickedMapped?.boundary?.length ? 'shapes-outline' : 'pin-outline'}
+                              size={12}
+                              color={aquapinColors.textMuted}
+                            />
+                            <Text style={styles.sheetMappingText}>
+                              {clickedMapped?.boundary?.length
+                                ? 'Polygon'
+                                : clickedMapped
+                                  ? 'GPS Point'
+                                  : 'Unmapped'}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.sheetCloseButton}
+                      onPress={() => setSelectedMappedId(null)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Close"
+                    >
+                      <Ionicons name="close" size={20} color={aquapinColors.text} />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Pond Info Summary */}
+                  <View style={styles.sheetInfoStrip}>
+                    <View style={styles.sheetInfoCol}>
+                      <Text style={styles.sheetInfoLabel}>Species</Text>
+                      <Text style={styles.sheetInfoValue} numberOfLines={1}>
+                        {clickedPond?.currentSpecies || 'None'}
+                      </Text>
+                    </View>
+                    <View style={styles.sheetInfoDivider} />
+                    <View style={styles.sheetInfoCol}>
+                      <Text style={styles.sheetInfoLabel}>Stock Count</Text>
+                      <Text style={styles.sheetInfoValue}>
+                        {clickedPond?.currentStockCount
+                          ? `${formatWholeNumber(clickedPond.currentStockCount)} fish`
+                          : '0 fish'}
+                      </Text>
+                    </View>
+                    <View style={styles.sheetInfoDivider} />
+                    <View style={styles.sheetInfoCol}>
+                      <Text style={styles.sheetInfoLabel}>Area / Map</Text>
+                      <Text style={styles.sheetInfoValue} numberOfLines={1}>
+                        {clickedMapped?.boundary?.length
+                          ? formatArea(calculatePolygonArea(clickedMapped.boundary))
+                          : 'Center Point'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Clearly Visible & Highly Styled Action Buttons */}
+                  <View style={styles.sheetActionContainer}>
+                    <TouchableOpacity
+                      style={styles.sheetPrimaryButton}
+                      activeOpacity={0.88}
+                      onPress={() => {
+                        const id = selectedMappedId;
+                        setSelectedMappedId(null);
+                        setDetailsPondId(id);
+                      }}
+                    >
+                      <View style={styles.sheetBtnIconText}>
+                        <Ionicons name="document-text-outline" size={18} color="#ffffff" />
+                        <Text style={styles.sheetPrimaryButtonText}>View Details & Records</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color="#ffffff" />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.sheetSecondaryButton}
+                      activeOpacity={0.88}
+                      onPress={() => beginMappingEdit()}
+                    >
+                      <View style={styles.sheetBtnIconText}>
+                        <Ionicons
+                          name={clickedMapped?.boundary?.length ? 'shapes-outline' : 'pin-outline'}
+                          size={18}
+                          color={aquapinColors.teal}
+                        />
+                        <Text style={styles.sheetSecondaryButtonText}>
+                          {clickedMapped?.boundary?.length ? 'Edit Polygon Boundary' : 'Edit GPS Location'}
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color={aquapinColors.textMuted} />
+                    </TouchableOpacity>
+
+                    {!clickedMapped?.boundary?.length && (
+                      <TouchableOpacity
+                        style={styles.sheetAddBoundaryButton}
+                        activeOpacity={0.88}
+                        onPress={() => beginMappingEdit(true)}
+                      >
+                        <View style={styles.sheetBtnIconText}>
+                          <Ionicons name="shapes" size={18} color={aquapinColors.teal} />
+                          <Text style={styles.sheetAddBoundaryButtonText}>Draw Polygon Boundary</Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color={aquapinColors.teal} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </>
+              );
+            })()}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Pond Details Features Modal (Opens in front directly on Map - No Pond Details page in back) */}
+      <Modal
+        visible={Boolean(selectedDetailsPond)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDetailsPondId(null)}
+      >
+        <View style={styles.detailsModalOverlay}>
+          <View style={styles.detailsModalCard}>
+            {/* Modal Header */}
+            <View style={styles.detailsModalHeader}>
+              <View style={styles.detailsModalTitleGroup}>
+                <View
+                  style={[
+                    styles.detailsPondIconWrap,
+                    {
+                      backgroundColor: isDetailsPondActive
+                        ? aquapinColors.blueSoft
+                        : aquapinColors.surfaceMuted,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="water"
+                    size={20}
+                    color={isDetailsPondActive ? aquapinColors.blue : aquapinColors.textMuted}
+                  />
+                </View>
+                <View style={styles.detailsModalHeaderCopy}>
+                  <Text style={styles.detailsModalTitle}>{selectedDetailsPond?.name || 'Pond Details'}</Text>
+                  <Text style={styles.detailsModalSubtitle}>
+                    {isDetailsPondActive ? 'Active' : 'Inactive'} ·{' '}
+                    {selectedDetailsPond?.currentSpecies || 'No species set'}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.detailsCloseButton}
+                onPress={() => setDetailsPondId(null)}
+                accessibilityRole="button"
+                accessibilityLabel="Close pond details"
+              >
+                <Ionicons name="close" size={20} color={aquapinColors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.detailsModalScroll}>
+              {/* Quick Actions Grid */}
+              <View style={styles.detailsActionGrid}>
+                <TouchableOpacity
+                  style={styles.detailsActionPill}
+                  activeOpacity={0.88}
+                  onPress={() => setDetailsEditingName(selectedDetailsPond?.name || '')}
+                >
+                  <View style={[styles.detailsActionIconBadge, { backgroundColor: aquapinColors.blueSoft }]}>
+                    <Ionicons name="create-outline" size={15} color={aquapinColors.blue} />
+                  </View>
+                  <Text style={styles.detailsActionPillText}>Edit Name</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.detailsActionPill}
+                  activeOpacity={0.88}
+                  onPress={() => {
+                    const id = detailsPondId;
+                    setDetailsPondId(null);
+                    setSelectedMappedId(id);
+                    beginMappingEdit();
+                  }}
+                >
+                  <View style={[styles.detailsActionIconBadge, { backgroundColor: aquapinColors.tealSoft }]}>
+                    <Ionicons name="map-outline" size={15} color={aquapinColors.teal} />
+                  </View>
+                  <Text style={styles.detailsActionPillText}>Map / Boundary</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.detailsActionPill}
+                  activeOpacity={0.88}
+                  onPress={() => openDetailsPondRecords('stocking')}
+                >
+                  <View style={[styles.detailsActionIconBadge, { backgroundColor: aquapinColors.greenSoft }]}>
+                    <Ionicons name="add-circle-outline" size={15} color={aquapinColors.green} />
+                  </View>
+                  <Text style={styles.detailsActionPillText}>Log Stocking</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.detailsActionPill}
+                  activeOpacity={0.88}
+                  onPress={() => openDetailsPondRecords('harvest')}
+                >
+                  <View style={[styles.detailsActionIconBadge, { backgroundColor: aquapinColors.blueSoft }]}>
+                    <Ionicons name="basket-outline" size={15} color={aquapinColors.blue} />
+                  </View>
+                  <Text style={styles.detailsActionPillText}>Log Harvest</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.detailsActionPill}
+                  activeOpacity={0.88}
+                  onPress={() => openDetailsPondRecords('mortality')}
+                >
+                  <View style={[styles.detailsActionIconBadge, { backgroundColor: aquapinColors.redSoft }]}>
+                    <Ionicons name="skull-outline" size={15} color={aquapinColors.red} />
+                  </View>
+                  <Text style={styles.detailsActionPillText}>Log Mortality</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Inline Editing Section */}
+              {detailsEditingName !== null && (
+                <View style={styles.detailsEditSection}>
+                  <Text style={styles.detailsEditSectionTitle}>Rename Pond</Text>
+                  <TextInput
+                    accessibilityLabel="Pond name"
+                    value={detailsEditingName}
+                    onChangeText={setDetailsEditingName}
+                    editable={!detailsSavingPond}
+                    style={styles.detailsEditInput}
+                    placeholder="Enter pond name"
+                    placeholderTextColor={aquapinColors.textMuted}
+                  />
+                  <View style={styles.detailsEditButtonRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.detailsSaveBtn,
+                        (!detailsEditingName.trim() || detailsSavingPond) && styles.detailsBtnDisabled,
+                      ]}
+                      disabled={detailsSavingPond || !detailsEditingName.trim() || detailsEditingName.trim() === selectedDetailsPond?.name}
+                      onPress={() => saveDetailsPondChanges({ name: detailsEditingName.trim() })}
+                    >
+                      <Text style={styles.detailsSaveBtnText}>{detailsSavingPond ? 'Saving...' : 'Save Name'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.detailsCancelBtn}
+                      disabled={detailsSavingPond}
+                      onPress={() => setDetailsEditingName(null)}
+                    >
+                      <Text style={styles.detailsCancelBtnText}>Cancel</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              {/* Pond Core Information Card */}
+              <View style={styles.detailsInfoCard}>
+                <Text style={styles.detailsCardSectionHeading}>Pond Information</Text>
+
+                <View style={styles.detailsRow}>
+                  <Text style={styles.detailsLabel}>Status</Text>
+                  <Text
+                    style={[
+                      styles.detailsValue,
+                      {
+                        color: isDetailsPondActive
+                          ? aquapinColors.green
+                          : aquapinColors.textMuted,
+                      },
+                    ]}
+                  >
+                    {isDetailsPondActive ? 'Active' : 'Inactive'}
+                  </Text>
+                </View>
+
+                <View style={styles.detailsRow}>
+                  <Text style={styles.detailsLabel}>Current Species</Text>
+                  <Text style={styles.detailsValue}>{selectedDetailsPond?.currentSpecies || 'Not set'}</Text>
+                </View>
+
+                <View style={styles.detailsRow}>
+                  <Text style={styles.detailsLabel}>Estimated Stock</Text>
+                  <Text style={styles.detailsValue}>
+                    {selectedDetailsPond?.currentStockCount
+                      ? `${formatWholeNumber(selectedDetailsPond.currentStockCount)} fish`
+                      : '0 fish'}
+                  </Text>
+                </View>
+
+                <View style={styles.detailsRow}>
+                  <Text style={styles.detailsLabel}>Boundary / Mapping</Text>
+                  <Text style={styles.detailsValue}>
+                    {selectedDetailsPond?.boundary
+                      ? 'Polygon Mapped'
+                      : selectedDetailsPond?.location
+                        ? 'GPS Point Only'
+                        : 'Unmapped'}
+                  </Text>
+                </View>
+
+                <View style={[styles.detailsRow, { borderBottomWidth: 0 }]}>
+                  <Text style={styles.detailsLabel}>Registered On</Text>
+                  <Text style={styles.detailsValue}>{formatDate(selectedDetailsPond?.createdAt)}</Text>
+                </View>
+
+                {detailsPondCoords && (
+                  <TouchableOpacity
+                    style={styles.detailsNavigateButton}
+                    onPress={() => openNavigation(detailsPondCoords)}
+                    activeOpacity={0.88}
+                  >
+                    <Ionicons name="navigate-outline" size={16} color={aquapinColors.blue} />
+                    <Text style={styles.detailsNavigateButtonText}>Navigate to Pond (Maps)</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Production Metrics */}
+              {detailsPondKpis && (
+                <View style={styles.detailsInfoCard}>
+                  <Text style={styles.detailsCardSectionHeading}>Production Metrics</Text>
+                  <View style={styles.detailsKpiGrid}>
+                    <View style={styles.detailsKpiCard}>
+                      <Text style={styles.detailsKpiLabel}>Total Stocked</Text>
+                      <Text style={styles.detailsKpiValue}>{formatWholeNumber(detailsPondKpis.totalStocked)}</Text>
+                    </View>
+                    <View style={styles.detailsKpiCard}>
+                      <Text style={styles.detailsKpiLabel}>Total Harvest</Text>
+                      <Text style={styles.detailsKpiValue}>
+                        {detailsPondKpis.totalHarvestKg > 0 ? `${formatWholeNumber(detailsPondKpis.totalHarvestKg)} kg` : '--'}
+                      </Text>
+                    </View>
+                    <View style={styles.detailsKpiCard}>
+                      <Text style={styles.detailsKpiLabel}>Survival Rate</Text>
+                      <Text
+                        style={[
+                          styles.detailsKpiValue,
+                          {
+                            color:
+                              detailsPondKpis.survivalRate !== null && detailsPondKpis.survivalRate >= 80
+                                ? aquapinColors.green
+                                : detailsPondKpis.survivalRate !== null && detailsPondKpis.survivalRate < 60
+                                  ? aquapinColors.red
+                                  : aquapinColors.text,
+                          },
+                        ]}
+                      >
+                        {detailsPondKpis.survivalRate !== null ? `${detailsPondKpis.survivalRate.toFixed(1)}%` : '--'}
+                      </Text>
+                    </View>
+                    <View style={styles.detailsKpiCard}>
+                      <Text style={styles.detailsKpiLabel}>Harvest ETA</Text>
+                      <Text style={styles.detailsKpiValue}>
+                        {detailsPondKpis.projectedHarvestDate ? formatDate(detailsPondKpis.projectedHarvestDate) : '--'}
+                      </Text>
+                    </View>
+                    {detailsPondKpis.projectedHarvestValue !== null && detailsPondKpis.projectedHarvestValue > 0 && (
+                      <View style={[styles.detailsKpiCard, { width: '100%' }]}>
+                        <Text style={styles.detailsKpiLabel}>Projected Harvest Value</Text>
+                        <Text style={[styles.detailsKpiValue, { color: aquapinColors.green }]}>
+                          {formatCurrencyPhp(detailsPondKpis.projectedHarvestValue)}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              )}
+
+              {/* Pond Alerts */}
+              {detailsSmartAlerts.length > 0 && (
+                <View style={styles.detailsAlertsContainer}>
+                  <Text style={styles.detailsCardSectionHeading}>Pond Alerts</Text>
+                  {detailsSmartAlerts.map((alert, index) => {
+                    const isCritical = alert.level === 'critical';
+                    const isWarning = alert.level === 'warning';
+                    return (
+                      <View
+                        key={`${alert.title}-${index}`}
+                        style={[
+                          styles.detailsAlertCard,
+                          isCritical
+                            ? styles.detailsAlertCritical
+                            : isWarning
+                              ? styles.detailsAlertWarning
+                              : styles.detailsAlertInfo,
+                        ]}
+                      >
+                        <Ionicons
+                          name={
+                            isCritical
+                              ? 'alert-circle'
+                              : isWarning
+                                ? 'warning-outline'
+                                : 'information-circle-outline'
+                          }
+                          size={18}
+                          color={
+                            isCritical
+                              ? aquapinColors.red
+                              : isWarning
+                                ? aquapinColors.amber
+                                : aquapinColors.blue
+                          }
+                        />
+                        <View style={styles.detailsAlertTextWrap}>
+                          <Text style={styles.detailsAlertTitle}>{alert.title}</Text>
+                          <Text style={styles.detailsAlertMessage}>{alert.message}</Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Add Pond Mode Selector Modal (Enhanced UI/UX) */}
+      <Modal
+        visible={addModeModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAddModeModalVisible(false)}
+      >
+        <View style={styles.sheetOverlay}>
+          <View style={styles.sheetContainer}>
+            <View style={styles.addModeHeader}>
+              <View>
+                <Text style={styles.addModeTitle}>Add New Pond</Text>
+                <Text style={styles.addModeSubtitle}>Choose how you would like to mark this pond</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.sheetCloseButton}
+                onPress={() => setAddModeModalVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+              >
+                <Ionicons name="close" size={20} color={aquapinColors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.addModeCardsContainer}>
+              <TouchableOpacity
+                style={styles.addModeCard}
+                activeOpacity={0.88}
+                onPress={() => {
+                  setAddModeModalVisible(false);
+                  setMapMode('point');
+                  setPolygonPoints([]);
+                }}
+              >
+                <View style={[styles.addModeCardIcon, { backgroundColor: aquapinColors.blueSoft }]}>
+                  <Ionicons name="location" size={24} color={aquapinColors.blue} />
+                </View>
+                <View style={styles.addModeCardCopy}>
+                  <Text style={styles.addModeCardTitle}>Single GPS Point</Text>
+                  <Text style={styles.addModeCardDesc}>
+                    Drop a single marker at the pond center using current location or map tap.
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={aquapinColors.blue} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.addModeCard}
+                activeOpacity={0.88}
+                onPress={() => {
+                  setAddModeModalVisible(false);
+                  setMapMode('polygon');
+                  setSelectedLocation(null);
+                }}
+              >
+                <View style={[styles.addModeCardIcon, { backgroundColor: aquapinColors.tealSoft }]}>
+                  <Ionicons name="shapes" size={24} color={aquapinColors.teal} />
+                </View>
+                <View style={styles.addModeCardCopy}>
+                  <Text style={styles.addModeCardTitle}>Draw Pond Boundary</Text>
+                  <Text style={styles.addModeCardDesc}>
+                    Tap points to trace the pond shape and compute accurate water surface area.
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={aquapinColors.teal} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       {/* Create Pond Modal */}
@@ -1418,5 +2247,621 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.5,
+  },
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    justifyContent: 'flex-end',
+  },
+  sheetContainer: {
+    backgroundColor: aquapinColors.background,
+    borderTopLeftRadius: aquapinRadius.sheet,
+    borderTopRightRadius: aquapinRadius.sheet,
+    padding: 20,
+    paddingBottom: 34,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  sheetTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    marginRight: 10,
+  },
+  sheetIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetTitleWrap: {
+    flex: 1,
+  },
+  sheetPondName: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: aquapinColors.text,
+  },
+  sheetBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  sheetStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: aquapinRadius.pill,
+  },
+  sheetStatusActive: {
+    backgroundColor: aquapinColors.greenSoft,
+  },
+  sheetStatusInactive: {
+    backgroundColor: aquapinColors.surfaceMuted,
+  },
+  sheetStatusText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  sheetStatusTextActive: {
+    color: aquapinColors.green,
+  },
+  sheetStatusTextInactive: {
+    color: aquapinColors.textMuted,
+  },
+  sheetMappingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: aquapinColors.surface,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: aquapinRadius.pill,
+    borderWidth: 1,
+    borderColor: aquapinColors.border,
+  },
+  sheetMappingText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: aquapinColors.textMuted,
+  },
+  sheetCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: aquapinColors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetInfoStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: aquapinColors.surface,
+    borderRadius: 16,
+    borderWidth: 1.2,
+    borderColor: 'rgba(255, 255, 255, 0.92)',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 16,
+    shadowColor: '#16335c',
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  sheetInfoCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  sheetInfoLabel: {
+    fontSize: 11,
+    color: aquapinColors.textMuted,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  sheetInfoValue: {
+    marginTop: 2,
+    fontSize: 13,
+    fontWeight: '800',
+    color: aquapinColors.text,
+  },
+  sheetInfoDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: aquapinColors.border,
+  },
+  sheetActionContainer: {
+    gap: 10,
+  },
+  sheetPrimaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: aquapinColors.blue,
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    shadowColor: aquapinColors.blue,
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  sheetBtnIconText: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  sheetPrimaryButtonText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  sheetSecondaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: aquapinColors.surface,
+    borderWidth: 1.2,
+    borderColor: aquapinColors.border,
+    borderRadius: 16,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+  },
+  sheetSecondaryButtonText: {
+    color: aquapinColors.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  sheetAddBoundaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: aquapinColors.tealSoft,
+    borderWidth: 1.2,
+    borderColor: aquapinColors.teal,
+    borderRadius: 16,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+  },
+  sheetAddBoundaryButtonText: {
+    color: aquapinColors.teal,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  addModeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 18,
+  },
+  addModeTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: aquapinColors.text,
+  },
+  addModeSubtitle: {
+    fontSize: 13,
+    color: aquapinColors.textMuted,
+    marginTop: 2,
+  },
+  addModeCardsContainer: {
+    gap: 12,
+  },
+  addModeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: aquapinColors.surface,
+    borderRadius: 20,
+    borderWidth: 1.2,
+    borderColor: 'rgba(255, 255, 255, 0.92)',
+    padding: 16,
+    shadowColor: '#16335c',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  addModeCardIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  addModeCardCopy: {
+    flex: 1,
+    marginRight: 10,
+  },
+  addModeCardTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: aquapinColors.text,
+  },
+  addModeCardDesc: {
+    fontSize: 12,
+    color: aquapinColors.textMuted,
+    marginTop: 4,
+    lineHeight: 17,
+  },
+  polygonEditBar: {
+    backgroundColor: aquapinColors.surface,
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: aquapinColors.border,
+  },
+  polygonHelpText: {
+    fontSize: 12,
+    color: aquapinColors.textMuted,
+    lineHeight: 17,
+    marginBottom: 8,
+  },
+  polygonActionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    backgroundColor: aquapinColors.blueSoft,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: aquapinRadius.pill,
+    marginBottom: 8,
+  },
+  polygonActionPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: aquapinColors.blue,
+  },
+  vertexScroll: {
+    marginVertical: 4,
+  },
+  vertexChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: aquapinRadius.pill,
+    backgroundColor: aquapinColors.surfaceMuted,
+    marginRight: 6,
+    borderWidth: 1,
+    borderColor: aquapinColors.border,
+  },
+  vertexChipActive: {
+    backgroundColor: aquapinColors.blueSoft,
+    borderColor: aquapinColors.blue,
+  },
+  vertexChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: aquapinColors.textMuted,
+  },
+  vertexChipTextActive: {
+    color: aquapinColors.blue,
+  },
+  vertexActionRow: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: aquapinColors.surfaceMuted,
+  },
+  vertexSelectedHint: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: aquapinColors.text,
+    marginBottom: 6,
+  },
+  vertexButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  vertexDeleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: aquapinColors.redSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: aquapinRadius.pill,
+  },
+  vertexDeleteBtnText: {
+    color: aquapinColors.red,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  vertexAddAfterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: aquapinColors.tealSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: aquapinRadius.pill,
+  },
+  vertexAddAfterBtnText: {
+    color: aquapinColors.teal,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  vertexDoneBtn: {
+    backgroundColor: aquapinColors.surfaceMuted,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: aquapinRadius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vertexDoneBtnText: {
+    color: aquapinColors.text,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  detailsModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    justifyContent: 'flex-end',
+  },
+  detailsModalCard: {
+    backgroundColor: aquapinColors.background,
+    borderTopLeftRadius: aquapinRadius.sheet,
+    borderTopRightRadius: aquapinRadius.sheet,
+    maxHeight: '90%',
+    paddingBottom: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  detailsModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 14,
+    backgroundColor: aquapinColors.surface,
+    borderTopLeftRadius: aquapinRadius.sheet,
+    borderTopRightRadius: aquapinRadius.sheet,
+    borderBottomWidth: 1,
+    borderBottomColor: aquapinColors.border,
+  },
+  detailsModalTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    marginRight: 10,
+  },
+  detailsPondIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailsModalHeaderCopy: {
+    flex: 1,
+  },
+  detailsModalTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: aquapinColors.text,
+  },
+  detailsModalSubtitle: {
+    fontSize: 12,
+    color: aquapinColors.textMuted,
+    marginTop: 2,
+  },
+  detailsCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: aquapinColors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailsModalScroll: {
+    padding: 16,
+    gap: 14,
+  },
+  detailsActionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  detailsActionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: aquapinColors.surface,
+    borderWidth: 1.2,
+    borderColor: 'rgba(11, 106, 168, 0.16)',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: aquapinRadius.pill,
+    shadowColor: '#16335c',
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  detailsActionIconBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailsActionPillText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: aquapinColors.text,
+  },
+  detailsEditSection: {
+    backgroundColor: aquapinColors.surface,
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: aquapinColors.border,
+    gap: 10,
+  },
+  detailsEditSectionTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: aquapinColors.text,
+  },
+  detailsEditInput: {
+    borderWidth: 1,
+    borderColor: aquapinColors.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: aquapinColors.text,
+    backgroundColor: aquapinColors.surfaceMuted,
+  },
+  detailsEditButtonRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  detailsSaveBtn: {
+    backgroundColor: aquapinColors.blue,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: aquapinRadius.pill,
+  },
+  detailsSaveBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  detailsBtnDisabled: {
+    opacity: 0.5,
+  },
+  detailsCancelBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  detailsCancelBtnText: {
+    color: aquapinColors.textMuted,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  detailsInfoCard: {
+    backgroundColor: aquapinColors.surface,
+    borderRadius: 20,
+    borderWidth: 1.2,
+    borderColor: 'rgba(255, 255, 255, 0.92)',
+    padding: 16,
+    shadowColor: '#16335c',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  detailsCardSectionHeading: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: aquapinColors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 10,
+  },
+  detailsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: aquapinColors.surfaceMuted,
+  },
+  detailsLabel: {
+    fontSize: 13,
+    color: aquapinColors.textMuted,
+    fontWeight: '600',
+  },
+  detailsValue: {
+    fontSize: 14,
+    color: aquapinColors.text,
+    fontWeight: '700',
+  },
+  detailsNavigateButton: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: aquapinColors.blueSoft,
+    borderRadius: aquapinRadius.pill,
+    paddingVertical: 10,
+  },
+  detailsNavigateButtonText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: aquapinColors.blue,
+  },
+  detailsKpiGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  detailsKpiCard: {
+    width: '48.5%',
+    backgroundColor: aquapinColors.surfaceMuted,
+    borderRadius: 14,
+    padding: 12,
+  },
+  detailsKpiLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: aquapinColors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  detailsKpiValue: {
+    marginTop: 4,
+    fontSize: 16,
+    fontWeight: '900',
+    color: aquapinColors.text,
+  },
+  detailsAlertsContainer: {
+    gap: 8,
+  },
+  detailsAlertCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderRadius: 16,
+    padding: 12,
+  },
+  detailsAlertCritical: {
+    backgroundColor: aquapinColors.redSoft,
+  },
+  detailsAlertWarning: {
+    backgroundColor: aquapinColors.amberSoft,
+  },
+  detailsAlertInfo: {
+    backgroundColor: aquapinColors.blueSoft,
+  },
+  detailsAlertTextWrap: {
+    flex: 1,
+  },
+  detailsAlertTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: aquapinColors.text,
+  },
+  detailsAlertMessage: {
+    marginTop: 2,
+    fontSize: 12,
+    color: aquapinColors.textMuted,
+    lineHeight: 17,
   },
 });

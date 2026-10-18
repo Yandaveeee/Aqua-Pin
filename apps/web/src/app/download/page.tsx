@@ -1,6 +1,8 @@
 import { headers } from "next/headers";
 import Image from "next/image";
 import Link from "next/link";
+import fs from "fs";
+import path from "path";
 import { getApkReleaseInfo } from "@/lib/admin-data";
 import { generateQrCodeDataUrl } from "@/lib/qr-code";
 
@@ -24,7 +26,14 @@ export default async function DownloadPage() {
   const qrCodeDataUrl = await generateQrCodeDataUrl(downloadEndpoint);
 
   const version = generalSettings.appVersion || "1.0.0";
-  const fileSize = generalSettings.apkFileSize || "62.1 MB";
+  let fileSize = generalSettings.apkFileSize || "62.1 MB";
+  try {
+    const localApkPath = path.join(process.cwd(), "public", "aquapin-release.apk");
+    if (fs.existsSync(localApkPath)) {
+      const stats = fs.statSync(localApkPath);
+      fileSize = `${(stats.size / (1024 * 1024)).toFixed(1)} MB`;
+    }
+  } catch {}
   const releaseNotes =
     generalSettings.appReleaseNotes ||
     "Official AquaPin Android release featuring GPS pond geotagging, offline record caching, and harvest logging.";

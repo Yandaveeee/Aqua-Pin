@@ -126,7 +126,7 @@ export function derivePondStateFromRecords(
     }, 0) || latestFullHarvestAt
 
   return {
-    isActive: currentStockCount > 0 && activeSpecies.length > 0,
+    isActive: currentStockCount > 0,
     currentSpecies,
     currentStockCount,
     activeSpecies,

@@ -117,7 +117,7 @@ export default function AppNavigator() {
         {user ? (
           <>
             <Stack.Screen name="Main" component={MainTabs} />
-            <Stack.Screen name="PondWorkspace" component={PondsScreen} />
+            <Stack.Screen name="PondWorkspace" component={PondManagementScreen} />
             <Stack.Screen name="PondMap" component={MapScreen} />
             <Stack.Screen name="RecordsWorkspace" component={DataEntryScreen} />
             <Stack.Screen name="SyncStatus" component={SyncScreen} />

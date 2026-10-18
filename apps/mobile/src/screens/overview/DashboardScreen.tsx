@@ -188,50 +188,7 @@ export default function DashboardScreen() {
     };
   }, [aiBubbleOpacity, aiBubbleScale, aiButtonScale]);
 
-  const moduleCards = [
-    {
-      key: 'ponds',
-      title: 'Pond Management',
-      subtitle: 'GPS mapping, polygon creation, and pond history.',
-      icon: 'map-outline' as const,
-      onPress: () => navigation.navigate('Ponds'),
-    },
-    {
-      key: 'records',
-      title: 'Records',
-      subtitle: 'Stocking, mortality, harvest, and queue review.',
-      icon: 'document-text-outline' as const,
-      onPress: () => navigation.navigate('Records'),
-    },
-    {
-      key: 'sync',
-      title: 'Sync Module',
-      subtitle: 'Offline queue monitoring and sync health.',
-      icon: 'cloud-upload-outline' as const,
-      onPress: () => openStackScreen('SyncStatus'),
-    },
-    {
-      key: 'ai',
-      title: 'AI Assistant',
-      subtitle: 'Recommendations, health signals, and growth tips.',
-      icon: 'sparkles-outline' as const,
-      onPress: () => openStackScreen('AiAssistant'),
-    },
-    {
-      key: 'profile',
-      title: 'Profile & Settings',
-      subtitle: 'Notifications, security, and account preferences.',
-      icon: 'settings-outline' as const,
-      onPress: () => navigation.navigate('Profile'),
-    },
-    {
-      key: 'map',
-      title: 'GPS Pond Map',
-      subtitle: 'Open live pond mapping and location capture.',
-      icon: 'navigate-outline' as const,
-      onPress: () => openStackScreen('PondMap', { requestKey: Date.now(), initialMode: 'view' }),
-    },
-  ];
+
 
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
@@ -598,22 +555,6 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        <View style={styles.sectionHeadRow}>
-          <Text style={styles.sectionTitle}>Aquapin 2.0 Modules</Text>
-          <Text style={styles.sectionMeta}>Upgraded experience</Text>
-        </View>
-
-        <View style={styles.moduleGrid}>
-          {moduleCards.map((card) => (
-            <TouchableOpacity key={card.key} style={styles.moduleCard} activeOpacity={0.92} onPress={card.onPress}>
-              <View style={styles.moduleIcon}>
-                <Ionicons name={card.icon} size={20} color={aquapinColors.blue} />
-              </View>
-              <Text style={styles.moduleTitle}>{card.title}</Text>
-              <Text style={styles.moduleSubtitle}>{card.subtitle}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
 
         <View style={styles.sectionHeadRow}>
           <Text style={styles.sectionTitle}>Recent Activities</Text>
@@ -1131,40 +1072,7 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginTop: 8,
   },
-  moduleGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    rowGap: 14,
-    marginBottom: 20,
-  },
-  moduleCard: {
-    width: '48%',
-    backgroundColor: aquapinColors.surface,
-    borderRadius: 24,
-    padding: 16,
-    minHeight: 150,
-  },
-  moduleIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 15,
-    backgroundColor: aquapinColors.blueSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-  moduleTitle: {
-    color: aquapinColors.text,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  moduleSubtitle: {
-    color: aquapinColors.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 8,
-  },
+
   activityList: {
     gap: 12,
   },
