@@ -4,6 +4,7 @@ import Link from "next/link";
 import fs from "fs";
 import path from "path";
 import { getApkReleaseInfo } from "@/lib/admin-data";
+import { ADMIN_SETTINGS_DEFAULTS } from "@/lib/admin-settings";
 import { generateQrCodeDataUrl } from "@/lib/qr-code";
 
 export const dynamic = "force-dynamic";
@@ -25,8 +26,8 @@ export default async function DownloadPage() {
   const downloadEndpoint = `${origin}/api/download/apk`;
   const qrCodeDataUrl = await generateQrCodeDataUrl(downloadEndpoint);
 
-  const version = generalSettings.appVersion || "1.0.0";
-  let fileSize = generalSettings.apkFileSize || "62.1 MB";
+  const version = generalSettings.appVersion || ADMIN_SETTINGS_DEFAULTS.general.appVersion || "1.0.1";
+  let fileSize = generalSettings.apkFileSize || ADMIN_SETTINGS_DEFAULTS.general.apkFileSize || "63.2 MB";
   try {
     const localApkPath = path.join(process.cwd(), "public", "aquapin-release.apk");
     if (fs.existsSync(localApkPath)) {
@@ -36,7 +37,8 @@ export default async function DownloadPage() {
   } catch {}
   const releaseNotes =
     generalSettings.appReleaseNotes ||
-    "Official AquaPin Android release featuring GPS pond geotagging, offline record caching, and harvest logging.";
+    ADMIN_SETTINGS_DEFAULTS.general.appReleaseNotes ||
+    "AquaPin 2.0 release featuring Pond Management improvements, in-place details on map, and automated active status.";
 
   return (
     <main className="public-download-page">

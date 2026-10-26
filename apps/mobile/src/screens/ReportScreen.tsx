@@ -5,7 +5,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import ChatMarkdown from '../components/ChatMarkdown';
 import { assistantSnapshot, Conversation, conversationKey, readConversations, newConversation } from '../lib/assistant';
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import {
+  ExpoSpeechRecognitionModule,
+  useSpeechRecognitionEvent,
+} from 'expo-speech-recognition';
 import {
   View,
   Text,
@@ -20,6 +24,8 @@ import {
   Alert,
   Dimensions,
   Modal,
+  Animated,
+  Vibration,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -85,6 +91,99 @@ export default function ReportScreen() {
   const { ponds } = usePonds();
   const scrollViewRef = useRef<ScrollView>(null);
   const requestInFlight = useRef(false);
+
+  // ── Voice input state ──────────────────────────────────────────────────────
+  const [isListening, setIsListening] = useState(false);
+  const [voicePermission, setVoicePermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
+  const interimRef = useRef('');
+
+  // Map app language to BCP-47 tag
+  const speechLang = language === 'fil' ? 'fil-PH' : 'en-US';
+
+  // Pulse animation while recording
+  useEffect(() => {
+    if (isListening) {
+      pulseLoop.current = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.35, duration: 600, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        ])
+      );
+      pulseLoop.current.start();
+    } else {
+      pulseLoop.current?.stop();
+      Animated.timing(pulseAnim, { toValue: 1, duration: 150, useNativeDriver: true }).start();
+    }
+  }, [isListening]);
+
+  // Speech recognition events
+  useSpeechRecognitionEvent('result', (event) => {
+    const transcript = event.results[0]?.transcript ?? '';
+    interimRef.current = transcript;
+    setInputText(transcript);
+  });
+
+  useSpeechRecognitionEvent('end', () => {
+    setIsListening(false);
+    // If we got something, keep it in the input for user review
+  });
+
+  useSpeechRecognitionEvent('error', (event) => {
+    setIsListening(false);
+    const msg = (event as any).message ?? (event as any).error ?? '';
+    if (msg && msg !== 'no-speech') {
+      Alert.alert('Voice Error', 'Could not recognise speech. Please try again.');
+    }
+  });
+
+  const startListening = useCallback(async () => {
+    // Request permissions first
+    if (voicePermission !== 'granted') {
+      const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!result.granted) {
+        setVoicePermission('denied');
+        Alert.alert('Permission Required', 'Microphone access is needed for voice input. Please enable it in Settings.');
+        return;
+      }
+      setVoicePermission('granted');
+    }
+    interimRef.current = '';
+    setInputText('');
+    Vibration.vibrate(30);
+    setIsListening(true);
+    try {
+      await ExpoSpeechRecognitionModule.start({
+        lang: speechLang,
+        interimResults: true,
+        continuous: false,
+        maxAlternatives: 1,
+        addsPunctuation: true,
+      });
+    } catch {
+      setIsListening(false);
+    }
+  }, [voicePermission, speechLang]);
+
+  const stopListening = useCallback(async () => {
+    try {
+      await ExpoSpeechRecognitionModule.stop();
+    } catch {
+      /* ignore */
+    }
+    setIsListening(false);
+  }, []);
+
+  const handleMicPress = useCallback(() => {
+    if (isListening) {
+      void stopListening();
+    } else {
+      void startListening();
+    }
+  }, [isListening, startListening, stopListening]);
+  // ──────────────────────────────────────────────────────────────────────────
+
 
   useEffect(() => {
     if (!historyReady || !user || !activeId) return;
@@ -220,6 +319,16 @@ export default function ReportScreen() {
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
+
+  // Long-press mic: stop & immediately send whatever was captured
+  const handleMicLongPress = useCallback(async () => {
+    if (isListening) {
+      await stopListening();
+    }
+    const text = interimRef.current.trim() || inputText.trim();
+    if (text) void sendMessage(text);
+  }, [isListening, stopListening, inputText, sendMessage]);
+
 
   const clearConversation = () => {
     if (messages.length <= 1 || requestInFlight.current) return;
@@ -358,20 +467,45 @@ export default function ReportScreen() {
                   style={styles.input}
                   value={inputText}
                   onChangeText={setInputText}
-                  placeholder={t('Ask about your ponds...')}
-                  placeholderTextColor="#94a3b8"
+                  placeholder={isListening ? '🎙 Listening...' : t('Ask about your ponds...')}
+                  placeholderTextColor={isListening ? '#007bff' : '#94a3b8'}
                   multiline
                   maxLength={500}
                   returnKeyType="send"
                   onSubmitEditing={() => sendMessage(inputText)}
                   blurOnSubmit={false}
-                  editable={!loading}
+                  editable={!loading && !isListening}
                   onFocus={() => {
                     setTimeout(() => {
                       scrollViewRef.current?.scrollToEnd({ animated: true });
                     }, 100);
                   }}
                 />
+
+                {/* Mic button */}
+                <TouchableOpacity
+                  style={[
+                    styles.micButton,
+                    isListening && styles.micButtonActive,
+                    loading && styles.micButtonDisabled,
+                  ]}
+                  onPress={handleMicPress}
+                  onLongPress={handleMicLongPress}
+                  delayLongPress={600}
+                  disabled={loading}
+                  accessibilityRole="button"
+                  accessibilityLabel={isListening ? 'Stop voice input' : 'Start voice input'}
+                >
+                  <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+                    <Ionicons
+                      name={isListening ? 'stop-circle' : 'mic'}
+                      size={20}
+                      color={loading ? '#aaa' : isListening ? '#fff' : '#007bff'}
+                    />
+                  </Animated.View>
+                </TouchableOpacity>
+
+                {/* Send button */}
                 <TouchableOpacity
                   style={[styles.sendButton, (!inputText.trim() || loading) && styles.sendButtonDisabled]}
                   onPress={() => sendMessage(inputText)}
@@ -630,6 +764,29 @@ const styles = StyleSheet.create({
     shadowOpacity: 0,
     elevation: 0,
   },
+  micButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#007bff',
+    backgroundColor: '#f0f7ff',
+  },
+  micButtonActive: {
+    backgroundColor: '#e53935',
+    borderColor: '#e53935',
+    shadowColor: '#e53935',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  micButtonDisabled: {
+    borderColor: '#c0c8d4',
+    backgroundColor: '#f3f4f6',
+  },
   disclaimer: {
     marginTop: 5,
     fontSize: 10.5,
@@ -638,3 +795,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+

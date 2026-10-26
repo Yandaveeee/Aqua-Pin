@@ -24,11 +24,11 @@ export default function InstallApkClient({
   const [copied, setCopied] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
 
-  const version = generalSettings.appVersion || "1.0.0";
-  const fileSize = generalSettings.apkFileSize || "62.1 MB";
+  const version = generalSettings.appVersion || "1.0.1";
+  const fileSize = generalSettings.apkFileSize || "63.2 MB";
   const releaseNotes =
     generalSettings.appReleaseNotes ||
-    "Official AquaPin Android release featuring GPS pond geotagging, offline record caching, and harvest logging.";
+    "AquaPin 2.0 release featuring Pond Management improvements, in-place details on map, and automated active status.";
 
   const handleCopyLink = async () => {
     try {

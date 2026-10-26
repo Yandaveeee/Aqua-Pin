@@ -6,17 +6,35 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://povferhanayvnzedxajp.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBvdmZlcmhhbmF5dm56ZWR4YWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4ODY1MDgsImV4cCI6MjA4ODQ2MjUwOH0.jdjOi6FElHDK8qQGj89IZ7zLP0dSuG0R4CWeRBFyrOQ",
+        "EXPO_PUBLIC_MAPS_API_KEY": "AIzaSyA1c1Gw2fRPp_bHw2_y_477IpVPzrCOqvg",
+        "EXPO_PUBLIC_AUTH_EMAIL_REDIRECT_URL": "aquapin://auth/callback"
+      }
     },
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://povferhanayvnzedxajp.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBvdmZlcmhhbmF5dm56ZWR4YWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4ODY1MDgsImV4cCI6MjA4ODQ2MjUwOH0.jdjOi6FElHDK8qQGj89IZ7zLP0dSuG0R4CWeRBFyrOQ",
+        "EXPO_PUBLIC_MAPS_API_KEY": "AIzaSyA1c1Gw2fRPp_bHw2_y_477IpVPzrCOqvg",
+        "EXPO_PUBLIC_AUTH_EMAIL_REDIRECT_URL": "aquapin://auth/callback"
       }
     },
     "production": {
       "android": {
         "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://povferhanayvnzedxajp.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBvdmZlcmhhbmF5dm56ZWR4YWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4ODY1MDgsImV4cCI6MjA4ODQ2MjUwOH0.jdjOi6FElHDK8qQGj89IZ7zLP0dSuG0R4CWeRBFyrOQ",
+        "EXPO_PUBLIC_MAPS_API_KEY": "AIzaSyA1c1Gw2fRPp_bHw2_y_477IpVPzrCOqvg",
+        "EXPO_PUBLIC_AUTH_EMAIL_REDIRECT_URL": "aquapin://auth/callback"
       }
     }
   }
